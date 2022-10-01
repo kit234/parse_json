@@ -13,7 +13,7 @@
 #include <vector>
 #include <cassert>
 
-#ifndef __DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT 
+#ifndef __DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
 #define __DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT(T) template <typename T,typename=std::enable_if_t<std::is_base_of_v<JsonObject,std::remove_all_extents_t<T>>>>
 #endif
 
@@ -25,7 +25,7 @@
 #define __ENABLE_IF_T_IS(T,sametype,type) std::enable_if_t<std::is_same_v<std::remove_all_extents_t<T>,sametype>,type>
 #endif
 
-#ifndef __HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT 
+#ifndef __HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
 #define __HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT template <typename,typename>
 #endif
 
@@ -46,14 +46,51 @@ struct __json_object_add_node {
 struct __TreeNode {
 	friend class JsonParser;
 public:
+	__TreeNode& create_object(const std::string& key){
+		insert_node(key);
+		return *this;
+	}
+	__TreeNode& create_array(const std::string& key){
+		insert_node(key);
+		operator[](key).insert_node("\"0");
+		return *this;
+	}
+	__TreeNode& create_and_into_last_elem(){
+		assert(this->is_array_node());
+		if (this->is_empty_array_node()){
+			return *((next.begin())->second);
+		}
+		else {
+			size_t idx=next.size();
+			std::string key='"'+std::to_string(idx);
+			return *insert_node(key);
+		}
+	}
+	template <typename T>
+	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,__TreeNode&)
+		push_back(const T& value)
+	{
+		assert(this->is_array_node());
+		if (this->is_empty_array_node()){
+			__json_object_add_node<T>()(value,(next.begin())->second);
+		}
+		else {
+			size_t idx=(this->next).size();
+			std::string key='"'+std::to_string(idx);
+			__TreeNode* idx_node=new __TreeNode; idx_node->key=key;
+			__json_object_add_node<T>()(value,idx_node);
+			(this->next).insert(std::make_pair(key,idx_node));
+		}
+		return *this;
+	}
+
 	template <typename T>
 	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,__TreeNode&)
 		add(const std::string& key,const T& value)
 	{
 		assert(next.count(key)==0);
-		__TreeNode* new_node=new __TreeNode; new_node->key=key;
+		__TreeNode* new_node=insert_node(key);
 		__json_object_add_node<T>()(value,new_node);
-		next.insert(make_pair(key,new_node));
 		return *this;
 	}
 
@@ -94,19 +131,19 @@ public:
 	}
 	template <typename T>
 	__ENABLE_IF_T_IS(T,double,double)
-		as() const 
+		as() const
 	{
 		return stod((next.begin())->first);
 	}
 	template <typename T>
 	__ENABLE_IF_T_IS(T,int,int)
-		as() const 
+		as() const
 	{
 		return stoi((next.begin())->first);
 	}
 	template <typename T>
 	__ENABLE_IF_T_IS(T,bool,bool)
-		as() const 
+		as() const
 	{
 		return as<std::string>()=="true"?true:false;
 	}
@@ -134,10 +171,42 @@ public:
 		assert(idx<size());
 		return *(next.at('"'+std::to_string(idx)));
 	}
+	__TreeNode& move_out() {
+		assert(prev!=nullptr);
+		return *prev;
+	}
+	const __TreeNode& move_out() const {
+		assert(prev!=nullptr);
+		return *prev;
+	}
 
 private:
+	__TreeNode* insert_node(const std::string& key){
+		__TreeNode* new_node=new __TreeNode;
+		new_node->key=key; new_node->prev=this;
+		(new_node->next).clear();
+		next.insert(make_pair(key,new_node));
+		return new_node;
+	}
 	bool is_list_node() const {
 		return key.front()=='"';
+	}
+	bool is_array_node() const {
+		if (next.empty()) return false;
+		for (auto& p:next){
+			if (!(p.second->is_list_node())) return false;
+		}
+		return true;
+	}
+	bool is_empty_array_node() const {
+		if (!is_array_node()) return false;
+		if (next.size()>1)    return false;
+		return this->size()==0;
+	}
+	// return true if this is String,Number,Boolean
+	bool is_single_object() const {
+		if (is_array_node()) return false;
+		return (next.size())==0;
 	}
 	void release_childs(){
 		for (auto& p:next){
@@ -149,13 +218,14 @@ private:
 public:
 	std::string key;
 	std::map<std::string,__TreeNode*> next;
+	__TreeNode* prev;
 };
 
 class JsonParser {
 public:
 	using Value=__TreeNode;
 public:
-	JsonParser(JsonParser&& rhs){
+	JsonParser(JsonParser&& rhs) noexcept {
 		_root=rhs._root;
 		rhs._root=nullptr;
 	}
@@ -165,7 +235,7 @@ public:
 
 	static JsonParser get_empty(){
 		JsonParser reader;
-		reader._root=new Value; reader._root->key="root";
+		reader._root=new Value; reader._root->key="root"; reader._root->prev=nullptr;
 		return reader;
 	}
 	static JsonParser from_string(const std::string& json){
@@ -184,11 +254,11 @@ public:
 		return JsonParser::from_string(this->to_json_string());
 	}
 private:
-	JsonParser(){}
+	JsonParser() noexcept {}
 	JsonParser(const JsonParser&)=delete;
 	JsonParser& operator=(const JsonParser&)=delete;
 public:
-	JsonParser& operator=(JsonParser&& rhs) {
+	JsonParser& operator=(JsonParser&& rhs) noexcept {
 		release(_root);
 		_root=rhs._root;
 		rhs._root=nullptr;
@@ -196,7 +266,8 @@ public:
 	}
 private:
 	void parse(const std::string& json){
-		_root=new Value; _root->key="root";
+		if (!_root) release(_root);
+		_root=new Value; _root->key="root"; _root->prev=nullptr;
 		size_t l=0,count=json.size();
 		std::string buffer;
 		std::stack<Value*> node_stack;
@@ -266,16 +337,9 @@ private:
 		delete node;
 		node=nullptr;
 	}
-	Value* create_node(std::string& buffer,bool is_list){
-		if (!is_list)
-			fix_buffer(buffer);
-		Value* node=new Value; node->key=buffer;
-		(node->next).clear();
-		return node;
-	}
 	Value* insert_node(std::string& buffer,std::stack<Value*>& node_stack,bool is_list){
-		Value* node=create_node(buffer,is_list);
-		((node_stack.top())->next).insert(make_pair(buffer,node));
+		if (!is_list) fix_buffer(buffer);
+		Value* node=(node_stack.top())->insert_node(buffer);
 		buffer.clear();
 		return node;
 	}
@@ -307,14 +371,21 @@ private:
 			result+=']';
 		}
 		else {
-			if (nodes.size()>1) result+='{';
+			bool only_have_one_single=(nodes.size()==1); // only have one single object(String,Number,Boolean)
+			for (auto& p:nodes){
+				if (!only_have_one_single) break;
+				if (!((p.second)->is_single_object())){
+					only_have_one_single=false;
+				}
+			}
+			if (!only_have_one_single) result+='{';
 			for (auto& p:nodes){
 				if (p!=(*nodes.begin())) result+=',';
 				result+=('"'+p.first+'"');
 				if ((p.second->next).size()>0) result+=':';
 				result+=nodes_to_string((p.second)->next);
 			}
-			if (nodes.size()>1) result+='}';
+			if (!only_have_one_single) result+='}';
 		}
 		return result;
 	}
@@ -345,7 +416,7 @@ public:
 	}
 	template <typename T>
 	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,const T*)
-		get_field(const std::string& key) const 
+		get_field(const std::string& key) const
 	{
 		assert(_values.count(key)>0);
 		return static_cast<const T*>(_values.at(key));
@@ -371,7 +442,7 @@ public:
 	void from_string(const std::string& json){
 		from_json_value(JsonParser::from_string(json).get_root());
 	}
-	JsonParser to_json_reader() const {
+	JsonParser to_json_parser() const {
 		JsonParser reader=JsonParser::from_string(to_json_string());
 		return reader;
 	}
@@ -466,7 +537,7 @@ public:
 	template <typename U>
 	__ENABLE_IF_T_IS(U,std::vector<T*>,std::vector<T*>)
 		as() const { return _arr; }
-	
+
 	void set(const std::vector<T*>& v){
 		release();
 		for (T* obj:v) _arr.push_back(obj);
