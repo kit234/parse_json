@@ -1,41 +1,21 @@
 #include <iostream>
 #include <vector>
 
-template <typename T>
-class MyUnique {
-public:
-	MyUnique(T* ptr) :__ptr(ptr){}
-	MyUnique(MyUnique&& r){
-		this->__ptr=r.__ptr;
-		r.__ptr=nullptr;
-	}
-	~MyUnique() { __release(); }
-	template <typename U>
-	decltype(auto) operator[](const U& idx) {
-		return (*__ptr).operator[](idx);
-	}
-public:
-	void operator=(MyUnique&& r){
-		__release();
-		this->__ptr=r.__ptr;
-		r.__ptr=nullptr;
-	}
-private:
-	MyUnique()=delete;
-	MyUnique(const MyUnique&)=delete;
-	void __release(){
-		if (__ptr) delete __ptr;
-		__ptr=nullptr;
-	}
-private:
-	T* __ptr;
-};
+#include "json_parser.hpp"
 
 using namespace std;
+using namespace jsonparser;
 
 int main(){
-	MyUnique<vector<int>> v(new vector<int>({1,2,3}));
-	MyUnique<vector<int>> v2(new vector<int>());
-	v2=std::move(v);
+	const char* json="{\"leader\":{\"name\":\"kitty\"},\"scores\":[60,70,80]}";
+	JsonObject* obj=JsonParser::parse_for_object(json);
+	JsonObject* leader=obj->get_object("leader");
+	JsonArray*  scores=obj->get_array("scores");
+	for (JsonBase* score:scores->as_vector()){
+		JsonNumber* s=(JsonNumber*)score;
+		cout<<s->as_int()<<endl;
+	}
+	cout<<obj->to_json_string()<<endl;
+	delete obj;
 	return 0;
 }

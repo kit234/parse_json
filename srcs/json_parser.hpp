@@ -5,6 +5,8 @@
 #include <map>
 #include <vector>
 
+#include <iostream>
+
 #define __JSON_PARSER_START_NAMESPACE namespace jsonparser {
 #define __JSON_PARSER_END_NAMESPACE };
 
@@ -23,8 +25,6 @@ public:
 	virtual void assign(const JsonBase*)=0;
 	// clone self
 	virtual JsonBase* clone() const=0;
-	// return true if JsonString,JsonNumber,JsonBoolean
-	virtual bool is_simple() const { return false; }
 };
 class JsonObject :public JsonBase {
 public:
@@ -39,43 +39,36 @@ public:
 		__values.insert(std::make_pair(key,obj));
 	}
 
-	JsonObject*  get_object (const std::string& key) { return static_cast<JsonObject*> (__get(key)); }
-	JsonArray*   get_array  (const std::string& key) { return static_cast<JsonArray*>  (__get(key)); }
-	JsonString*  get_string (const std::string& key) { return static_cast<JsonString*> (__get(key)); }
-	JsonNumber*  get_number (const std::string& key) { return static_cast<JsonNumber*> (__get(key)); }
-	JsonBoolean* get_boolean(const std::string& key) { return static_cast<JsonBoolean*>(__get(key)); }
+	JsonObject*  get_object (const std::string& key) { return (JsonObject*) (__get(key)); }
+	JsonArray*   get_array  (const std::string& key) { return (JsonArray*)  (__get(key)); }
+	JsonString*  get_string (const std::string& key) { return (JsonString*) (__get(key)); }
+	JsonNumber*  get_number (const std::string& key) { return (JsonNumber*) (__get(key)); }
+	JsonBoolean* get_boolean(const std::string& key) { return (JsonBoolean*)(__get(key)); }
 
 	const JsonObject*  get_object (const std::string& key) const
-	{ return static_cast<const JsonObject*> (__get(key)); }
+	{ return (const JsonObject*) (__get(key)); }
 	const JsonArray*   get_array  (const std::string& key) const
-	{ return static_cast<const JsonArray*>  (__get(key)); }
+	{ return (const JsonArray*)  (__get(key)); }
 	const JsonString*  get_string (const std::string& key) const
-	{ return static_cast<const JsonString*> (__get(key)); }
+	{ return (const JsonString*) (__get(key)); }
 	const JsonNumber*  get_number (const std::string& key) const
-	{ return static_cast<const JsonNumber*> (__get(key)); }
+	{ return (const JsonNumber*) (__get(key)); }
 	const JsonBoolean* get_boolean(const std::string& key) const
-	{ return static_cast<const JsonBoolean*>(__get(key)); }
+	{ return (const JsonBoolean*)(__get(key)); }
 
 	std::string to_json_string() const override {
-		bool is_only_one_simple=(__values.size()==1);
-		for (std::map<std::string,JsonBase*>::const_iterator p=__values.begin();p!=__values.end();++p){
-			if (!is_only_one_simple) break;
-			if (!(p->second->is_simple())) {
-				is_only_one_simple=false;
-			}
-		}
-
 		std::string result;
-		if (!is_only_one_simple) result+='{';
+		result+='{';
 		for (std::map<std::string,JsonBase*>::const_iterator p=__values.begin();p!=__values.end();++p){
 			const std::string& key=p->first;
 			const JsonBase*  value=p->second;
-			result+=key; result+=':';
+			result+=('"'+key+'"');
+			result+=':';
 			result+=value->to_json_string();
 			result+=',';
 		}
-		if (!is_only_one_simple) result+='}';
-		result.pop_back(); // to remove tail ','
+		result.pop_back(); // remove tail ','
+		result+='}';
 
 		return result;
 	}
@@ -102,7 +95,6 @@ public:
 
 		return static_cast<JsonBase*>(result);
 	}
-	bool is_simple() const override { return false; }
 private:
 	void __release() {
 		for (std::map<std::string,JsonBase*>::iterator p=__values.begin();p!=__values.end();++p){
@@ -125,22 +117,22 @@ public:
 		__array.push_back(obj);
 	}
 
-	JsonObject*  get_object (size_t idx) { return static_cast<JsonObject*> (__get(idx)); }
-	JsonArray*   get_array  (size_t idx) { return static_cast<JsonArray*>  (__get(idx)); }
-	JsonString*  get_string (size_t idx) { return static_cast<JsonString*> (__get(idx)); }
-	JsonNumber*  get_number (size_t idx) { return static_cast<JsonNumber*> (__get(idx)); }
-	JsonBoolean* get_boolean(size_t idx) { return static_cast<JsonBoolean*>(__get(idx)); }
+	JsonObject*  get_object (size_t idx) { return (JsonObject*) (__get(idx)); }
+	JsonArray*   get_array  (size_t idx) { return (JsonArray*)  (__get(idx)); }
+	JsonString*  get_string (size_t idx) { return (JsonString*) (__get(idx)); }
+	JsonNumber*  get_number (size_t idx) { return (JsonNumber*) (__get(idx)); }
+	JsonBoolean* get_boolean(size_t idx) { return (JsonBoolean*)(__get(idx)); }
 
 	const JsonObject*  get_object (size_t idx) const
-	{ return static_cast<const JsonObject*> (__get(idx)); }
+	{ return (const JsonObject*) (__get(idx)); }
 	const JsonArray*   get_array  (size_t idx) const
-	{ return static_cast<const JsonArray*>  (__get(idx)); }
+	{ return (const JsonArray*)  (__get(idx)); }
 	const JsonString*  get_string (size_t idx) const
-	{ return static_cast<const JsonString*> (__get(idx)); }
+	{ return (const JsonString*) (__get(idx)); }
 	const JsonNumber*  get_number (size_t idx) const
-	{ return static_cast<const JsonNumber*> (__get(idx)); }
+	{ return (const JsonNumber*) (__get(idx)); }
 	const JsonBoolean* get_boolean(size_t idx) const
-	{ return static_cast<const JsonBoolean*>(__get(idx)); }
+	{ return (const JsonBoolean*)(__get(idx)); }
 
 	std::vector<JsonBase*> as_vector() { return __array; }
 
@@ -154,8 +146,8 @@ public:
 			result+=(*p)->to_json_string();
 			result+=',';
 		}
+		result.pop_back(); // remove tail ','
 		result+=']';
-		result.pop_back(); // to remove tail ','
 
 		return result;
 	}
@@ -178,7 +170,6 @@ public:
 
 		return static_cast<JsonBase*>(result);
 	}
-	bool is_simple() const override { return false; }
 private:
 	void __release(){
 		for (std::vector<JsonBase*>::iterator p=__array.begin();p!=__array.end();++p){
@@ -198,6 +189,7 @@ private:
 class JsonString :public JsonBase {
 public:
 	JsonString() :JsonBase(){}
+	JsonString(const std::string& str) :__string(str){}
 
 	const std::string as_string() const { return __string; }
 
@@ -221,13 +213,13 @@ public:
 
 		return static_cast<JsonBase*>(result);
 	}
-	bool is_simple() const override { return true; }
 private:
 	std::string __string;
 };
 class JsonNumber :public JsonBase {
 public:
-	JsonNumber() :JsonBase(){}
+	JsonNumber() :JsonBase(), __number(0){}
+	JsonNumber(double number) :__number(number){}
 
 	double as_double() const { return static_cast<double>(__number); }
 	int    as_int()    const { return static_cast<int>   (__number); }
@@ -253,13 +245,13 @@ public:
 
 		return static_cast<JsonBase*>(result);
 	}
-	bool is_simple() const override { return true; }
 private:
 	double __number;
 };
 class JsonBoolean :public JsonBase {
 public:
-	JsonBoolean() :JsonBase() {}
+	JsonBoolean() :JsonBase(), __boolean(false) {}
+	JsonBoolean(bool boolean) :__boolean(boolean){}
 
 	bool as_bool() const { return __boolean; }
 
@@ -284,9 +276,92 @@ public:
 
 		return static_cast<JsonBase*>(result);
 	}
-	bool is_simple() const override { return true; }
 private:
 	bool __boolean;
+};
+
+class JsonParser {
+public:
+	static JsonBase* parse(const char* json){
+		size_t temp=0;
+		return __parse_json(json,0,temp);
+	}
+	static JsonObject* parse_for_object(const char* json){
+		return (JsonObject*)parse(json);
+	}
+	static JsonArray* parse_for_array(const char* json){
+		return (JsonArray*)parse(json);
+	}
+private:
+	static JsonBase* __parse_json_object(const char* json,size_t l,size_t& new_idx){
+		JsonObject* result=new JsonObject;
+		size_t idx=l+1;
+		std::string key; key.clear();
+		while (json[idx]!='}'){
+			if (json[idx]==',') { ++idx; continue; }
+			if (json[idx]==':'){
+				size_t new_idx=0;
+				key=key.substr(1,key.size()-2); // remove the '"' of key
+				result->set(key,__parse_json(json,idx+1,new_idx));
+				key.clear();
+				idx=new_idx+1; continue;
+			}
+			key+=json[idx];
+			++idx;
+		}
+		new_idx=idx;
+		return static_cast<JsonBase*>(result);
+	}
+	static JsonBase* __parse_json_array(const char* json,size_t l,size_t& new_idx){
+		JsonArray* result=new JsonArray;
+		size_t idx=l+1;
+		while (json[idx]!=']'){
+			if (json[idx]==',') { ++idx; continue; }
+			size_t new_idx=0;
+			result->push_back(__parse_json(json,idx,new_idx));
+			idx=new_idx+1;
+		}
+		new_idx=idx;
+		return static_cast<JsonBase*>(result);
+	}
+	static JsonBase* __parse_json_string(const char* json,size_t l,size_t& new_idx){
+		std::string temp; temp.clear();
+		size_t idx=l+1;
+		while (json[idx]!='"'){
+			temp+=json[idx]; ++idx;
+		}
+		new_idx=idx;
+		return static_cast<JsonBase*>(new JsonString(temp));
+	}
+	static JsonBase* __parse_json_number(const char* json,size_t l,size_t& new_idx){
+		std::string temp; temp.clear();
+		size_t idx=l;
+		while (std::isdigit(json[idx])||json[idx]=='.'){
+			temp+=json[idx]; ++idx;
+		}
+		new_idx=idx-1;
+		return static_cast<JsonBase*>(new JsonNumber(std::stod(temp)));
+	}
+	static JsonBase* __parse_json_boolean(const char* json,size_t l,size_t& new_idx){
+		if (json[l]=='t'){
+			new_idx=l+3;
+			return static_cast<JsonBase*>(new JsonBoolean(true));
+		}
+		else{
+			new_idx=l+4;
+			return static_cast<JsonBase*>(new JsonBoolean(false));
+		}
+	}
+
+	static JsonBase* __parse_json(const char* json,size_t l,size_t& new_idx){
+		char ch=json[l];
+		if (ch=='{')          return __parse_json_object (json,l,new_idx);
+		if (ch=='[')          return __parse_json_array  (json,l,new_idx);
+		if (ch=='"')          return __parse_json_string (json,l,new_idx);
+		if (std::isdigit(ch)) return __parse_json_number (json,l,new_idx);
+		if (ch=='t'||ch=='f') return __parse_json_boolean(json,l,new_idx);
+		return nullptr;
+	}
 };
 
 __JSON_PARSER_END_NAMESPACE
