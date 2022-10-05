@@ -1,730 +1,540 @@
-/**
- * DATE: 2022/9/21
-*/
-/*
- * CAUTION: OBJECT MUST BE DELETED WHEN YOU USE CLONE FUNCTION TO CREATE OBJECT !!!
-*/
 #ifndef __JSON_PARSER_HPP__
 #define __JSON_PARSER_HPP__
 
-#include <map>
 #include <string>
-#include <stack>
+#include <map>
 #include <vector>
-#include <cassert>
 
-#ifndef __DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-#define __DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT(T) template <typename T,typename=std::enable_if_t<std::is_base_of_v<JsonObject,std::remove_all_extents_t<T>>>>
-#endif
+#define __JSON_PARSER_START_NAMESPACE namespace jsonparser {
+#define __JSON_PARSER_END_NAMESPACE };
 
-#ifndef __ENABLE_IF_T_IS_BASE_OF_JSONOBJECT
-#define __ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,type) std::enable_if_t<std::is_base_of_v<JsonObject,std::remove_all_extents_t<T>>,type>
-#endif
+__JSON_PARSER_START_NAMESPACE
 
-#ifndef __ENABLE_IF_T_IS
-#define __ENABLE_IF_T_IS(T,sametype,type) std::enable_if_t<std::is_same_v<std::remove_all_extents_t<T>,sametype>,type>
-#endif
-
-#ifndef __HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-#define __HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT template <typename,typename>
-#endif
-
+class JsonBase;
 class JsonObject;
-class JsonString;
-__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
 class JsonArray;
+class JsonString;
 class JsonNumber;
-struct __TreeNode;
+class JsonBoolean;
 
-__DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT(T)
-struct __json_object_add_node {
-	void operator()(const T& obj,__TreeNode* root){
-		obj.add_node(root);
+template <typename T>
+class __json_parser_create {
+public:
+	T* operator()() const {
+		return new T();
 	}
 };
 
-struct __TreeNode {
-	friend class JsonParser;
+class JsonBase {
 public:
-	__TreeNode& create_object(const std::string& key){
-		insert_node(key);
-		return *this;
+	virtual ~JsonBase(){}
+	virtual std::string to_json_string() const=0;
+	virtual void assign(const JsonBase&)=0;
+	// clone self
+	virtual JsonBase* clone() const=0;
+};
+class JsonObject :public JsonBase {
+public:
+	JsonObject() :JsonBase(){}
+	~JsonObject(){
+		__release();
 	}
-	__TreeNode& create_array(const std::string& key){
-		insert_node(key);
-		operator[](key).insert_node("\"0");
-		return *this;
+
+	void erase(const std::string& key){
+		delete __values[key];
+		__values.erase(key);
 	}
-	__TreeNode& create_and_into_last_elem(){
-		assert(this->is_array_node());
-		if (this->is_empty_array_node()){
-			return *((next.begin())->second);
+
+	JsonObject* create_object(const std::string& key){
+		if (__values.count(key)>0) return nullptr;
+		JsonObject* new_object=__json_parser_create<JsonObject>()();
+		__values.insert(make_pair(key,(JsonBase*)new_object));
+		return this;
+	}
+
+	JsonObject* create_array(const std::string& key){
+		if (__values.count(key)>0) return nullptr;
+		JsonArray* new_array=__json_parser_create<JsonArray>()();
+		__values.insert(make_pair(key,(JsonBase*)new_array));
+		return this;
+	}
+
+	bool has_field(const std::string& key) const {
+		return __values.count(key)>0;
+	}
+
+	JsonObject* set(const std::string& key,JsonBase* obj){
+		if (__values.count(key)>0){
+			delete __values[key]; __values.erase(key);
 		}
-		else {
-			size_t idx=next.size();
-			std::string key='"'+std::to_string(idx);
-			return *insert_node(key);
+		__values.insert(std::make_pair(key,obj));
+		return this;
+	}
+
+	JsonObject* to_object (const std::string& key,JsonObject**  target){
+		if (*target!=nullptr) return this;
+		*target=get_object(key);
+		return this;
+	}
+	JsonObject* to_array  (const std::string& key,JsonArray**   target){
+		if (*target!=nullptr) return this;
+		*target=get_array(key);
+		return this;
+	}
+	JsonObject* to_string (const std::string& key,JsonString**  target){
+		if (*target!=nullptr) return this;
+		*target=get_string(key);
+		return this;
+	}
+	JsonObject* to_number (const std::string& key,JsonNumber**  target){
+		if (*target!=nullptr) return this;
+		*target=get_number(key);
+		return this;
+	}
+	JsonObject* to_boolean(const std::string& key,JsonBoolean** target){
+		if (*target!=nullptr) return this;
+		*target=get_boolean(key);
+		return this;
+	}
+
+	JsonObject*  get_object (const std::string& key) { return (JsonObject*) (__get(key)); }
+	JsonArray*   get_array  (const std::string& key) { return (JsonArray*)  (__get(key)); }
+	JsonString*  get_string (const std::string& key) { return (JsonString*) (__get(key)); }
+	JsonNumber*  get_number (const std::string& key) { return (JsonNumber*) (__get(key)); }
+	JsonBoolean* get_boolean(const std::string& key) { return (JsonBoolean*)(__get(key)); }
+
+	const JsonObject*  get_object (const std::string& key) const
+	{ return (const JsonObject* ) (__get(key)); }
+	const JsonArray*   get_array  (const std::string& key) const
+	{ return (const JsonArray*  ) (__get(key)); }
+	const JsonString*  get_string (const std::string& key) const
+	{ return (const JsonString* ) (__get(key)); }
+	const JsonNumber*  get_number (const std::string& key) const
+	{ return (const JsonNumber* ) (__get(key)); }
+	const JsonBoolean* get_boolean(const std::string& key) const
+	{ return (const JsonBoolean*) (__get(key)); }
+
+	std::string to_json_string() const override {
+		std::string result;
+		result+='{';
+		for (std::map<std::string,JsonBase*>::const_iterator p=__values.begin();p!=__values.end();++p){
+			const std::string& key=p->first;
+			const JsonBase*  value=p->second;
+			result+=('"'+key+'"');
+			result+=':';
+			result+=value->to_json_string();
+			result+=',';
+		}
+		result.pop_back(); // remove tail ','
+		result+='}';
+
+		return result;
+	}
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		__release();
+		const JsonObject& rhs=static_cast<const JsonObject&>(r);
+		const std::map<std::string,JsonBase*>* rhs_values=&(rhs.__values);
+
+		for (std::map<std::string,JsonBase*>::const_iterator p=rhs_values->begin();p!=rhs_values->end();++p){
+			const std::string& key=p->first;
+			const JsonBase*  value=p->second;
+			(this->__values).insert(std::make_pair(key,value->clone()));
 		}
 	}
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,__TreeNode&)
-		push_back(const T& value)
-	{
-		assert(this->is_array_node());
-		if (this->is_empty_array_node()){
-			__json_object_add_node<T>()(value,(next.begin())->second);
+	JsonBase* clone() const override {
+		JsonObject* result=new JsonObject;
+
+		for (std::map<std::string,JsonBase*>::const_iterator p=__values.begin();p!=__values.end();++p){
+			const std::string& key=p->first;
+			const JsonBase*  value=p->second;
+			(result->__values).insert(std::make_pair(key,value->clone()));
 		}
-		else {
-			size_t idx=(this->next).size();
-			std::string key='"'+std::to_string(idx);
-			__TreeNode* idx_node=new __TreeNode; idx_node->key=key;
-			__json_object_add_node<T>()(value,idx_node);
-			(this->next).insert(std::make_pair(key,idx_node));
-		}
-		return *this;
-	}
 
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,__TreeNode&)
-		add(const std::string& key,const T& value)
-	{
-		assert(next.count(key)==0);
-		__TreeNode* new_node=insert_node(key);
-		__json_object_add_node<T>()(value,new_node);
-		return *this;
+		return static_cast<JsonBase*>(result);
 	}
-
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,void)
-		set(const std::string& key,const T& value)
-	{
-		assert(next.count(key)>0);
-		__TreeNode* node=next[key];
-		node->release_childs();
-		__json_object_add_node<T>()(value,node);
-	}
-
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,void)
-		set(const T& value)
-	{
-		release_childs();
-		__json_object_add_node<T>()(value,this);
-	}
-
-	bool has_member(const std::string& key) const {
-		return next.count(key)>0;
-	}
-
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,T)
-		as() const
-	{
-		T res; res.from_json_value(*this);
-		return res;
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS(T,std::string,const std::string&)
-		as() const
-	{
-		return (next.begin())->first;
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS(T,double,double)
-		as() const
-	{
-		return stod((next.begin())->first);
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS(T,int,int)
-		as() const
-	{
-		return stoi((next.begin())->first);
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS(T,bool,bool)
-		as() const
-	{
-		return as<std::string>()=="true"?true:false;
-	}
-
-	size_t size() const {
-		size_t count=0;
-		for (auto& p:next){
-			if ((p.second)->next.size()!=0) ++count;
-		}
-		return count;
-	}
-	__TreeNode& operator[](const std::string& key) {
-		assert(next.count(key)>0);
-		return *(next.at(key));
-	}
-	__TreeNode& operator[](size_t idx){
-		assert(idx<size());
-		return *(next.at('"'+std::to_string(idx)));
-	}
-	const __TreeNode& operator[](const std::string& key) const {
-		assert(next.count(key)>0);
-		return *(next.at(key));
-	}
-	const __TreeNode& operator[](size_t idx) const {
-		assert(idx<size());
-		return *(next.at('"'+std::to_string(idx)));
-	}
-	__TreeNode& move_out() {
-		assert(prev!=nullptr);
-		return *prev;
-	}
-	const __TreeNode& move_out() const {
-		assert(prev!=nullptr);
-		return *prev;
-	}
-
 private:
-	__TreeNode* insert_node(const std::string& key){
-		__TreeNode* new_node=new __TreeNode;
-		new_node->key=key; new_node->prev=this;
-		(new_node->next).clear();
-		next.insert(make_pair(key,new_node));
-		return new_node;
-	}
-	bool is_list_node() const {
-		return key.front()=='"';
-	}
-	bool is_array_node() const {
-		if (next.empty()) return false;
-		for (auto& p:next){
-			if (!(p.second->is_list_node())) return false;
+	void __release() {
+		for (std::map<std::string,JsonBase*>::iterator p=__values.begin();p!=__values.end();++p){
+			delete (p->second);
 		}
-		return true;
+		__values.clear();
 	}
-	bool is_empty_array_node() const {
-		if (!is_array_node()) return false;
-		if (next.size()>1)    return false;
-		return this->size()==0;
-	}
-	// return true if this is String,Number,Boolean
-	bool is_single_object() const {
-		if (is_array_node()) return false;
-		return (next.size())==0;
-	}
-	void release_childs(){
-		for (auto& p:next){
-			p.second->release_childs();
-			delete p.second;
-		}
-		next.clear();
-	}
+	JsonBase* __get(const std::string& key) { return __values[key]; }
+	const JsonBase* __get(const std::string& key) const { return __values.at(key); }
+private:
+	std::map<std::string,JsonBase*> __values;
+};
+class JsonArray :public JsonBase {
 public:
-	std::string key;
-	std::map<std::string,__TreeNode*> next;
-	__TreeNode* prev;
+	JsonArray() :JsonBase() {}
+	JsonArray(const std::initializer_list<JsonBase*>& arr) :JsonBase(),__array(arr){}
+	~JsonArray(){
+		__release();
+	}
+
+	JsonArray* push_back(JsonBase* obj){
+		__array.push_back(obj);
+		return this;
+	}
+
+	JsonArray* pop_back(){
+		delete __array.back();
+		__array.pop_back();
+		return this;
+	}
+
+	size_t size()   const { return __array.size(); }
+
+	size_t length() const { return __array.size(); }
+
+	JsonArray* erase(size_t idx){
+		delete __array[idx];
+		__array.erase(__array.begin()+idx);
+		return this;
+	}
+
+	JsonArray* insert(size_t idx,JsonBase* obj){
+		__array.insert(__array.begin()+idx,obj);
+		return this;
+	}
+
+	JsonArray* clear(){
+		__release();
+		return this;
+	}
+
+	JsonArray* create_object(){
+		JsonObject* new_object=__json_parser_create<JsonObject>()();
+		__array.push_back((JsonBase*)new_object);
+		return this;
+	}
+
+	JsonArray* create_array(){
+		JsonArray* new_array=__json_parser_create<JsonArray>()();
+		__array.push_back((JsonBase*)new_array);
+		return this;
+	}
+
+	JsonArray* create_object(size_t idx){
+		JsonObject* new_object=__json_parser_create<JsonObject>()();
+		__array.insert(__array.begin()+idx,(JsonBase*)new_object);
+		return this;
+	}
+
+	JsonArray* create_array(size_t idx){
+		JsonArray* new_array=__json_parser_create<JsonArray>()();
+		__array.insert(__array.begin()+idx,(JsonBase*)new_array);
+		return this;
+	}
+
+	JsonArray* to_object (size_t idx,JsonObject**  target){
+		if (*target!=nullptr) return this;
+		*target=get_object(idx);
+		return this;
+	}
+	JsonArray* to_array  (size_t idx,JsonArray**   target){
+		if (*target!=nullptr) return this;
+		*target=get_array(idx);
+		return this;
+	}
+	JsonArray* to_string (size_t idx,JsonString**  target){
+		if (*target!=nullptr) return this;
+		*target=get_string(idx);
+		return this;
+	}
+	JsonArray* to_number (size_t idx,JsonNumber**  target){
+		if (*target!=nullptr) return this;
+		*target=get_number(idx);
+		return this;
+	}
+	JsonArray* to_boolean(size_t idx,JsonBoolean** target){
+		if (*target!=nullptr) return this;
+		*target=get_boolean(idx);
+		return this;
+	}
+
+	JsonObject*  get_back_object()  { return (JsonObject*)  __array.back(); }
+	JsonArray*   get_back_array ()  { return (JsonArray*)   __array.back(); }
+	JsonString*  get_back_string()  { return (JsonString*)  __array.back(); }
+	JsonNumber*  get_back_number()  { return (JsonNumber*)  __array.back(); }
+	JsonBoolean* get_back_boolean() { return (JsonBoolean*) __array.back(); }
+
+	const JsonObject*  get_back_object () const
+	{ return (const JsonObject* ) (__array.back()); }
+	const JsonArray*   get_back_array  () const
+	{ return (const JsonArray*  ) (__array.back()); }
+	const JsonString*  get_back_string () const
+	{ return (const JsonString* ) (__array.back()); }
+	const JsonNumber*  get_back_number () const
+	{ return (const JsonNumber* ) (__array.back()); }
+	const JsonBoolean* get_back_boolean() const
+	{ return (const JsonBoolean*) (__array.back()); }
+
+	JsonObject*  get_front_object () { return (JsonObject* ) (__array.front()); }
+	JsonArray*   get_front_array  () { return (JsonArray*  ) (__array.front()); }
+	JsonString*  get_front_string () { return (JsonString* ) (__array.front()); }
+	JsonNumber*  get_front_number () { return (JsonNumber* ) (__array.front()); }
+	JsonBoolean* get_front_boolean() { return (JsonBoolean*) (__array.front()); }
+
+	const JsonObject*  get_front_object () const
+	{ return (const JsonObject* ) (__array.front()); }
+	const JsonArray*   get_front_array  () const
+	{ return (const JsonArray*  ) (__array.front()); }
+	const JsonString*  get_front_string () const
+	{ return (const JsonString* ) (__array.front()); }
+	const JsonNumber*  get_front_number () const
+	{ return (const JsonNumber* ) (__array.front()); }
+	const JsonBoolean* get_front_boolean() const
+	{ return (const JsonBoolean*) (__array.front()); }
+
+	JsonObject*  get_object (size_t idx) { return (JsonObject*) (__get(idx)); }
+	JsonArray*   get_array  (size_t idx) { return (JsonArray*)  (__get(idx)); }
+	JsonString*  get_string (size_t idx) { return (JsonString*) (__get(idx)); }
+	JsonNumber*  get_number (size_t idx) { return (JsonNumber*) (__get(idx)); }
+	JsonBoolean* get_boolean(size_t idx) { return (JsonBoolean*)(__get(idx)); }
+
+	const JsonObject*  get_object (size_t idx) const
+	{ return (const JsonObject* ) (__get(idx)); }
+	const JsonArray*   get_array  (size_t idx) const
+	{ return (const JsonArray*  ) (__get(idx)); }
+	const JsonString*  get_string (size_t idx) const
+	{ return (const JsonString* ) (__get(idx)); }
+	const JsonNumber*  get_number (size_t idx) const
+	{ return (const JsonNumber* ) (__get(idx)); }
+	const JsonBoolean* get_boolean(size_t idx) const
+	{ return (const JsonBoolean*) (__get(idx)); }
+
+	std::vector<JsonBase*> as_vector() { return __array; }
+
+	const std::vector<JsonBase*> as_vector() const { return __array; }
+
+	std::string to_json_string() const override {
+		std::string result;
+
+		result+='[';
+		for (std::vector<JsonBase*>::const_iterator p=__array.begin();p!=__array.end();++p){
+			result+=(*p)->to_json_string();
+			result+=',';
+		}
+		result.pop_back(); // remove tail ','
+		result+=']';
+
+		return result;
+	}
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		__release();
+		const JsonArray& rhs=static_cast<const JsonArray&>(r);
+		const std::vector<JsonBase*>* rhs_array=&(rhs.__array);
+
+		for (std::vector<JsonBase*>::const_iterator p=rhs_array->begin();p!=rhs_array->end();++p){
+			(this->__array).push_back((*p)->clone());
+		}
+	}
+	JsonBase* clone() const override {
+		JsonArray* result=new JsonArray;
+
+		for (std::vector<JsonBase*>::const_iterator p=__array.begin();p!=__array.end();++p){
+			(result->__array).push_back((*p)->clone());
+		}
+
+		return static_cast<JsonBase*>(result);
+	}
+private:
+	void __release(){
+		for (std::vector<JsonBase*>::iterator p=__array.begin();p!=__array.end();++p){
+			delete (*p);
+		}
+		__array.clear();
+	}
+	JsonBase* __get(size_t idx){
+		return __array[idx];
+	}
+	const JsonBase* __get(size_t idx) const {
+		return __array.at(idx);
+	}
+private:
+	std::vector<JsonBase*> __array;
+};
+class JsonString :public JsonBase {
+public:
+	JsonString() :JsonBase(){}
+	JsonString(const std::string& str) :__string(str){}
+
+	const std::string as_string() const { return __string; }
+
+	std::string to_json_string() const override {
+		std::string result;
+
+		result+='"'; result+=__string; result+='"';
+
+		return result;
+	}
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		const JsonString& rhs=static_cast<const JsonString&>(r);
+
+		this->__string=rhs.__string;
+	}
+	JsonBase* clone() const override {
+		JsonString* result=new JsonString;
+
+		result->__string=this->__string;
+
+		return static_cast<JsonBase*>(result);
+	}
+private:
+	std::string __string;
+};
+class JsonNumber :public JsonBase {
+public:
+	JsonNumber() :JsonBase(), __number(0){}
+	JsonNumber(double number) :__number(number){}
+
+	double as_double() const { return static_cast<double>(__number); }
+	int    as_int()    const { return static_cast<int>   (__number); }
+	float  as_float()  const { return static_cast<float> (__number); }
+
+	std::string to_json_string() const override {
+		std::string result;
+
+		result+=std::to_string(__number);
+
+		return result;
+	}
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		const JsonNumber& rhs=static_cast<const JsonNumber&>(r);
+
+		this->__number=rhs.__number;
+	}
+	JsonBase* clone() const override {
+		JsonNumber* result=new JsonNumber;
+
+		result->__number=this->__number;
+
+		return static_cast<JsonBase*>(result);
+	}
+private:
+	double __number;
+};
+class JsonBoolean :public JsonBase {
+public:
+	JsonBoolean() :JsonBase(), __boolean(false) {}
+	JsonBoolean(bool boolean) :__boolean(boolean){}
+
+	bool as_bool() const { return __boolean; }
+
+	std::string to_json_string() const override {
+		std::string result;
+
+		if (__boolean) result="true" ;
+		else           result="false";
+
+		return result;
+	}
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		const JsonBoolean& rhs=static_cast<const JsonBoolean&>(r);
+
+		this->__boolean=rhs.__boolean;
+	}
+	JsonBase* clone() const override {
+		JsonBoolean* result=new JsonBoolean;
+
+		result->__boolean=this->__boolean;
+
+		return static_cast<JsonBase*>(result);
+	}
+private:
+	bool __boolean;
 };
 
 class JsonParser {
 public:
-	using Value=__TreeNode;
-public:
-	JsonParser(JsonParser&& rhs) noexcept {
-		_root=rhs._root;
-		rhs._root=nullptr;
+	static JsonBase* parse(const char* json){
+		size_t temp=0;
+		return __parse_json(json,0,temp);
 	}
-	~JsonParser(){
-		release(_root);
+	static JsonObject* parse_to_object(const char* json){
+		return (JsonObject*)parse(json);
+	}
+	static JsonArray* parse_to_array(const char* json){
+		return (JsonArray*)parse(json);
+	}
+private:
+	static JsonBase* __parse_json_object(const char* json,size_t l,size_t& new_idx){
+		JsonObject* result=new JsonObject;
+		size_t idx=l+1;
+		std::string key; key.clear();
+		while (json[idx]!='}'){
+			if (json[idx]==',') { ++idx; continue; }
+			if (json[idx]==':'){
+				size_t new_idx=0;
+				key=key.substr(1,key.size()-2); // remove the '"' of key
+				result->set(key,__parse_json(json,idx+1,new_idx));
+				key.clear();
+				idx=new_idx+1; continue;
+			}
+			key+=json[idx];
+			++idx;
+		}
+		new_idx=idx;
+		return static_cast<JsonBase*>(result);
+	}
+	static JsonBase* __parse_json_array(const char* json,size_t l,size_t& new_idx){
+		JsonArray* result=new JsonArray;
+		size_t idx=l+1;
+		while (json[idx]!=']'){
+			if (json[idx]==',') { ++idx; continue; }
+			size_t new_idx=0;
+			result->push_back(__parse_json(json,idx,new_idx));
+			idx=new_idx+1;
+		}
+		new_idx=idx;
+		return static_cast<JsonBase*>(result);
+	}
+	static JsonBase* __parse_json_string(const char* json,size_t l,size_t& new_idx){
+		std::string temp; temp.clear();
+		size_t idx=l+1;
+		while (json[idx]!='"'){
+			temp+=json[idx]; ++idx;
+		}
+		new_idx=idx;
+		return static_cast<JsonBase*>(new JsonString(temp));
+	}
+	static JsonBase* __parse_json_number(const char* json,size_t l,size_t& new_idx){
+		std::string temp; temp.clear();
+		size_t idx=l;
+		while (std::isdigit(json[idx])||json[idx]=='.'){
+			temp+=json[idx]; ++idx;
+		}
+		new_idx=idx-1;
+		return static_cast<JsonBase*>(new JsonNumber(std::stod(temp)));
+	}
+	static JsonBase* __parse_json_boolean(const char* json,size_t l,size_t& new_idx){
+		if (json[l]=='t'){
+			new_idx=l+3;
+			return static_cast<JsonBase*>(new JsonBoolean(true));
+		}
+		else{
+			new_idx=l+4;
+			return static_cast<JsonBase*>(new JsonBoolean(false));
+		}
 	}
 
-	static JsonParser get_empty(){
-		JsonParser reader;
-		reader._root=new Value; reader._root->key="root"; reader._root->prev=nullptr;
-		return reader;
+	static JsonBase* __parse_json(const char* json,size_t l,size_t& new_idx){
+		char ch=json[l];
+		if (ch=='{')          return __parse_json_object (json,l,new_idx);
+		if (ch=='[')          return __parse_json_array  (json,l,new_idx);
+		if (ch=='"')          return __parse_json_string (json,l,new_idx);
+		if (std::isdigit(ch)) return __parse_json_number (json,l,new_idx);
+		if (ch=='t'||ch=='f') return __parse_json_boolean(json,l,new_idx);
+		return nullptr;
 	}
-	static JsonParser from_string(const std::string& json){
-		JsonParser reader; reader.parse(json);
-		return reader;
-	}
-
-	std::string to_json_string() const {
-		return nodes_to_string(_root->next);
-	}
-	Value& get_root() {
-		assert(_root!=nullptr);
-		return *_root;
-	}
-	JsonParser copy() const {
-		return JsonParser::from_string(this->to_json_string());
-	}
-private:
-	JsonParser() noexcept {}
-	JsonParser(const JsonParser&)=delete;
-	JsonParser& operator=(const JsonParser&)=delete;
-public:
-	JsonParser& operator=(JsonParser&& rhs) noexcept {
-		release(_root);
-		_root=rhs._root;
-		rhs._root=nullptr;
-		return *this;
-	}
-private:
-	void parse(const std::string& json){
-		if (!_root) release(_root);
-		_root=new Value; _root->key="root"; _root->prev=nullptr;
-		size_t l=0,count=json.size();
-		std::string buffer;
-		std::stack<Value*> node_stack;
-		std::vector<int> brace_count;
-		bool is_in_str=false;
-		node_stack.push(_root);
-		if (json.front()=='{') { ++l; --count; }
-		if (json.back()=='}')  { --count; }
-		for (char ch:json.substr(l,count)){
-			if (ch=='"') is_in_str=!is_in_str;
-			if (is_in_str) {
-				buffer+=ch; continue;
-			}
-			if (ch==' ') continue;
-			switch (ch){
-			case ':': {
-				Value* node=insert_node(buffer,node_stack,false);
-				node_stack.push(node);
-				break;
-			}
-			case '{': {
-				if (!brace_count.empty()) ++(brace_count.back());
-				break;
-			}
-			case '}': {
-				if (!buffer.empty()) insert_node(buffer,node_stack,false);
-				node_stack.pop();
-				if (!brace_count.empty()) --(brace_count.back());
-				break;
-			}
-			case '[': {
-				brace_count.push_back(0);
-				buffer="\"0";
-				Value* node=insert_node(buffer,node_stack,true);
-				node_stack.push(node);
-				break;
-			}
-			case ']': {
-				brace_count.pop_back();
-				if (!buffer.empty()) insert_node(buffer,node_stack,false);
-				node_stack.pop();
-				break;
-			}
-			case ',': {
-				if (!brace_count.empty()){
-					if (!buffer.empty()) insert_node(buffer,node_stack,false);
-					if (brace_count.back()>0) { node_stack.pop(); break; }
-					int idx=get_cur_list_idx(node_stack)+1;
-					node_stack.pop();
-					buffer='"'+std::to_string(idx);
-					Value* node=insert_node(buffer,node_stack,true);
-					node_stack.push(node);
-				}
-				else {
-					insert_node(buffer,node_stack,false);
-					node_stack.pop();
-				}
-				break;
-			}
-			default: buffer+=ch;
-			};
-		}
-	}
-	void release(Value* node){
-		if (!node) return;
-		node->release_childs();
-		delete node;
-		node=nullptr;
-	}
-	Value* insert_node(std::string& buffer,std::stack<Value*>& node_stack,bool is_list){
-		if (!is_list) fix_buffer(buffer);
-		Value* node=(node_stack.top())->insert_node(buffer);
-		buffer.clear();
-		return node;
-	}
-	int get_cur_list_idx(const std::stack<Value*> node_stack){
-		int cur_idx=stoi(((node_stack.top())->key).substr(1));
-		return cur_idx;
-	}
-	void fix_buffer(std::string& buffer){
-		size_t l=0,count=buffer.size();
-		if (buffer.front()=='"') { ++l; --count; }
-		if (buffer.back()=='"')  { --count; }
-		buffer=buffer.substr(l,count);
-	}
-	std::string nodes_to_string(const std::map<std::string,Value*>& nodes) const {
-		if (nodes.empty()) return std::string();
-		bool is_list=true;
-		for (auto& p:nodes){
-			if (!(p.second)->is_list_node()){
-				is_list=false; break;
-			}
-		}
-		std::string result;
-		if (is_list){
-			result+='[';
-			for (auto& p:nodes){
-				if (p!=(*nodes.begin())) result+=',';
-				result+=nodes_to_string((p.second)->next);
-			}
-			result+=']';
-		}
-		else {
-			bool only_have_one_single=(nodes.size()==1); // only have one single object(String,Number,Boolean)
-			for (auto& p:nodes){
-				if (!only_have_one_single) break;
-				if (!((p.second)->is_single_object())){
-					only_have_one_single=false;
-				}
-			}
-			if (!only_have_one_single) result+='{';
-			for (auto& p:nodes){
-				if (p!=(*nodes.begin())) result+=',';
-				result+=('"'+p.first+'"');
-				if ((p.second->next).size()>0) result+=':';
-				result+=nodes_to_string((p.second)->next);
-			}
-			if (!only_have_one_single) result+='}';
-		}
-		return result;
-	}
-private:
-	Value* _root;
 };
 
-class JsonObject {
-	__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-	friend struct __json_object_add_node;
-	__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-	friend class JsonArray; // to use JsonObject::add_node
-public:
-	virtual ~JsonObject(){ release(); }
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,void)
-		define_field(const std::string& key)
-	{
-		assert(_values.count(key)==0);
-		_values[key]=new T();
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,T*)
-		get_field(const std::string& key)
-	{
-		assert(_values.count(key)>0);
-		return static_cast<T*>(_values.at(key));
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS_BASE_OF_JSONOBJECT(T,const T*)
-		get_field(const std::string& key) const
-	{
-		assert(_values.count(key)>0);
-		return static_cast<const T*>(_values.at(key));
-	}
-	virtual void set(JsonObject*)=0;
-public:
-	virtual std::string to_json_string() const {
-		std::string result; result+='{';
-		for (auto p=_values.begin();p!=_values.end();++p){
-			if (p!=_values.begin()) result+=',';
-			result+='"'+(p->first)+'"'; result+=':';
-			result+=(p->second)->to_json_string();
-		}
-		result+='}';
-		return result;
-	}
-	virtual void from_json_value(const JsonParser::Value& v){
-		for (auto& field:_values){
-			const std::string& key=field.first;
-			(field.second)->from_json_value(v[key]);
-		}
-	}
-	void from_string(const std::string& json){
-		from_json_value(JsonParser::from_string(json).get_root());
-	}
-	JsonParser to_json_parser() const {
-		JsonParser reader=JsonParser::from_string(to_json_string());
-		return reader;
-	}
-	virtual JsonObject* clone()const=0;
-	void release(){
-		for (auto& p:_values) delete p.second;
-		_values.clear();
-	}
-	virtual void add_node(__TreeNode* root) const {
-		for (auto& p:_values){
-			__TreeNode* node=new __TreeNode; node->key=p.first;
-			(p.second)->add_node(node);
-			(root->next).insert(make_pair(p.first,node));
-		}
-	};
-protected:
-	std::map<std::string,JsonObject*> _values;
-};
-class JsonString:public JsonObject {
-	__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-	friend struct __json_object_add_node;
-	friend class JsonArray<JsonString,void>; // to use JsonString::add_node
-public:
-	JsonString()=default;
-	JsonString(const char* str):_str(str){}
-	JsonString(const std::string& str):_str(str){}
-	JsonString(const JsonString& rhs):_str(rhs._str){}
-	std::string to_json_string() const override { return ('"'+_str+'"'); }
-	template <typename T>
-	__ENABLE_IF_T_IS(T,std::string,std::string)
-		as() const { return _str; }
-	void set(JsonObject* obj) override { set((JsonString*)obj); }
-	void set(const std::string& str) { _str=str; }
-	void set(const char* str) { _str=str; }
-	void set(const JsonString& rhs){ _str=rhs._str; }
-	void set(const JsonString* rhs){ _str=rhs->_str; }
-	void from_json_value(const JsonParser::Value& v) override {
-		_str=v.as<std::string>();
-	}
-	JsonObject* clone() const override {
-		return new JsonString(_str);
-	}
-private:
-	void add_node(__TreeNode* root) const override {
-		__TreeNode* node=new __TreeNode; node->key=_str;
-		(root->next).insert(make_pair(_str,node));
-	}
-public:
-	JsonString& operator=(const char* str) { _str=str; return *this; }
-	JsonString& operator=(const std::string& str) { _str=str; return *this; }
-	JsonString& operator=(const JsonString& rhs) { _str=rhs._str; return *this; }
-	operator std::string(){ return _str; }
-private:
-	std::string _str;
-};
-__DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT(T)
-class JsonArray:public JsonObject {
-	__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-	friend struct __json_object_add_node;
-public:
-	JsonArray(){}
-	JsonArray(const std::initializer_list<T>& l){
-		for (const T& e:l){
-			_arr.push_back(new T(e));
-		}
-	}
-	JsonArray(const std::initializer_list<T*>& l){
-		for (T* e:l){
-			_arr.push_back(e);
-		}
-	}
-	~JsonArray(){
-		release();
-	}
-	void push_back(const T& val) { _arr.push_back(new T(val)); }
-	void push_back(T* val) { _arr.push_back(val); }
-	void pop_back() { delete _arr.back(); _arr.pop_back(); }
-	size_t size() const { return _arr.size(); }
-	void clear() { release(); }
-	T* at(size_t idx) { return _arr.at(idx); }
-	const T* at(size_t idx) const { return _arr.at(idx); }
-
-	std::string to_json_string() const override {
-		std::string result="[";
-		for (size_t i=0;i<_arr.size();++i){
-			if (i!=0) result+=',';
-			result+=_arr[i]->to_json_string();
-		}
-		result+=']';
-		return result;
-	}
-	template <typename U>
-	__ENABLE_IF_T_IS(U,std::vector<T*>,std::vector<T*>)
-		as() const { return _arr; }
-
-	void set(const std::vector<T*>& v){
-		release();
-		for (T* obj:v) _arr.push_back(obj);
-	}
-	void set(const std::vector<T>& v){
-		release();
-		for (const T& obj:v) _arr.push_back((T*)(obj.clone()));
-	}
-	template <typename U>
-	void set(const std::vector<U>& v){
-		release();
-		for (const U& e:v){
-			_arr.push_back(new T(e));
-		}
-	}
-	void set(const std::initializer_list<T*>& v){
-		release();
-		for (T* e:v) _arr.push_back(e);
-	}
-	void set(const std::initializer_list<T>& v){
-		release();
-		for (const T& e:v) _arr.push_back((T*)(e.clone()));
-	}
-	template <typename U>
-	void set(const std::initializer_list<U>& v){
-		release();
-		for (const U& e:v){
-			_arr.push_back(new T(e));
-		}
-	}
-	void set(const JsonArray<T>& rhs){
-		release();
-		for (T* obj:rhs._arr){
-			_arr.push_back((T*)(obj->clone()));
-		}
-	}
-	void set(const JsonArray<T>* rhs){
-		release();
-		for (T* obj:rhs->_arr)
-			_arr.push_back(static_cast<T*>(obj->clone()));
-	}
-	void set(JsonObject* obj) override { set((JsonArray<T>*)obj); }
-	void set(JsonArray<T>&& rhs){
-		release();
-		_arr=rhs._arr; rhs._arr.clear();
-	}
-	void from_json_value(const JsonParser::Value& v) override {
-		release();
-		for (size_t i=0;i<v.size();++i){
-			T* r=new T; r->from_json_value(v[i]);
-			_arr.push_back(r);
-		}
-	}
-	JsonObject* clone() const override {
-		JsonArray<T>* array=new JsonArray<T>;
-		for (const T* obj:_arr)
-			(array->_arr).push_back(static_cast<T*>(obj->clone()));
-		return array;
-	}
-public:
-	operator std::vector<T*>() const { return _arr; }
-private:
-	void release(){
-		for (auto& e:_arr) delete e;
-		_arr.clear();
-	}
-	void add_node(__TreeNode* root) const override {
-		if (_arr.empty()){
-			std::string idx="\"0";
-			__TreeNode* node=new __TreeNode; node->key=idx;
-			(root->next).insert(make_pair(idx,node));
-		}
-		for (size_t i=0;i<_arr.size();++i){
-			std::string idx='"'+std::to_string(i);
-			__TreeNode* node=new __TreeNode; node->key=idx;
-			_arr[i]->add_node(node);
-			(root->next).insert(make_pair(idx,node));
-		}
-	}
-private:
-	std::vector<T*> _arr;
-};
-class JsonNumber:public JsonObject {
-	__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-	friend struct __json_object_add_node;
-	friend class JsonArray<JsonNumber,void>; // to use JsonNumber::add_node
-public:
-	JsonNumber():_number(0.0){}
-	JsonNumber(double number):_number(number){}
-	JsonNumber(const JsonNumber& rhs):_number(rhs._number){}
-	std::string to_json_string() const override {
-		return std::to_string(_number);
-	}
-	template <typename T>
-	__ENABLE_IF_T_IS(T,double,double)
-		as() const { return _number; }
-	template <typename T>
-	__ENABLE_IF_T_IS(T,int,int)
-		as() const { return static_cast<int>(_number); }
-	void set(double number) { _number=number; }
-	void set(const JsonNumber& rhs) { _number=rhs._number; }
-	void set(const JsonNumber* rhs) { _number=rhs->_number; }
-	void set(JsonObject* obj) override { set((JsonNumber*)obj); }
-	void from_json_value(const JsonParser::Value& v) override {
-		_number=v.as<double>();
-	}
-	JsonObject* clone() const override {
-		return new JsonNumber(_number);
-	}
-private:
-	void add_node(__TreeNode* root) const override {
-		std::string num=std::to_string(_number);
-		__TreeNode* node=new __TreeNode; node->key=num;
-		(root->next).insert(make_pair(num,node));
-	}
-public:
-	operator double() const { return _number; }
-	JsonNumber& operator=(double number) { _number=number; return *this; }
-private:
-	double _number;
-};
-class JsonBoolean: public JsonObject {
-	__HEADER_DEFINE_T_IF_T_IS_BASE_OF_JSONOBJECT
-	friend struct __json_object_add_node;
-	friend class JsonArray<JsonBoolean,void>; // to use JsonBoolean::add_node
-public:
-	JsonBoolean() :_val(false){}
-	JsonBoolean(bool val) :_val(val){}
-	JsonBoolean(const JsonBoolean& rhs) :_val(rhs._val){}
-	std::string to_json_string() const override { return _val?"true":"false"; }
-	template <typename T>
-	__ENABLE_IF_T_IS(T,bool,bool)
-		as() const { return _val; }
-	void set(bool val) { _val=val; }
-	void set(const JsonBoolean& rhs) { _val=rhs._val; }
-	void set(const JsonBoolean* rhs) { _val=rhs->_val; }
-	void set(JsonObject* obj) { set((JsonBoolean*)obj); }
-	void from_json_value(const JsonParser::Value& value) override {
-		if (value.as<bool>()) _val=true;
-		else                  _val=false;
-	}
-	JsonObject* clone() const override { return new JsonBoolean(_val); }
-private:
-	void add_node(__TreeNode* root) const override {
-		std::string key=(_val?"true":"false");
-		__TreeNode* node=new __TreeNode; node->key=key;
-		(root->next).insert(make_pair(key,node));
-	}
-public:
-	operator bool() const { return _val; }
-	JsonBoolean& operator=(const JsonBoolean& rhs) { this->_val=rhs._val; return *this; }
-private:
-	bool _val;
-};
-
-#ifndef JSON_OBJECT
-#define JSON_OBJECT(classname) \
-	classname(){ define_fields(); } \
-	classname(const classname& rhs) { define_fields(); set(&rhs); } \
-	void set(const classname& rhs)  { set(&rhs); } \
-	void set(const classname* rhs)  { for (auto& p:rhs->_values) { _values[p.first]->set(p.second); }} \
-	void set(JsonObject* obj) override { set((classname*)obj); } \
-	classname& operator=(const classname& rhs) { set(&rhs); return *this; } \
-	JsonObject* clone() const override { classname* r=new classname; r->set(this); return r; }
-#endif
-
-#ifndef START_DEFINE_FIELD
-#define START_DEFINE_FIELD void define_fields(){
-#endif
-#ifndef END_DEFINE_FIELD
-#define END_DEFINE_FIELD }
-#endif
-#ifndef DEFINE_FIELD
-#define DEFINE_FIELD(fieldtype,fieldname) define_field<fieldtype>(fieldname);
-#endif
-
-#ifndef SET_FIELD
-#define SET_FIELD(varname,fieldtype,fieldname,...) \
-	(varname)->get_field<fieldtype>(fieldname)->set(__VA_ARGS__);
-#endif
-#ifndef GET_FIELD
-#define GET_FIELD(varname,fieldtype,fieldname) \
-	((varname)->get_field<fieldtype>(fieldname))
-#endif
-
-#ifndef DEFINE_FIELDS
-#define DEFINE_FIELDS define_fields();
-#endif
+__JSON_PARSER_END_NAMESPACE
 
 #endif

@@ -1,114 +1,88 @@
-# 1. 简介
-使用现代C\++编写的JsonParser库，具有基本的解析字符串操作，同时支持自定义Json类型以及Json类型和Json字符串的相互转化。
-# 2. 如何使用
-只要将json_parser.hpp引入自己的项目中就好了。
-## 2.1 基本的Json字符串解析
-使用JsonParser的from_string函数来解析Json字符串,例如:
+# 1. Json Parser
+使用现代C++编写的Json解析器，可以将Json字符串转化为Json对象，或者将Json对象转化为Json字符串。
+# 2. How To Use
+只需要把srcs下的json_parser.hpp导入到自己的项目中即可,包含jsonparser名称空间.
+## 2.1 Json对象和Json字符串的相互转化
+可以使用JsonParser\::parse_to_object可以将Json对象转化为Json字符串,也可以使用Json对象的to_json_string将Json对象转化为Json字符串,例如:
 
-    JsonParser parser=JsonParser::from_string("{\"name\":\"kit\",\"age\":18,\"scores\":{60,70,80}}");
-可以使用[]运算符来引用其中的元素，例如:
+	using jsonparser;
 
-    const JsonParser::Value& value=parser.get_root();
-	string name=value["name"].as<string>();
-	int age=value["age"].as<int>();
-	int score=value["scores"][0].as<int>();
-你可以使用普通的for循环来遍历数组，例如:
+	std::string json="{\"name\":\"kit\",\"age\":18,\"scores\":[60,70,80]}";
 
-	for (int i=0;i<value["scores"].size();++i){
-		int s=value["scores"][i].as<int>();
+	// Json字符串转Json对象
+	JsonObject* student=JsonParser::parse_for_object(json.c_str());
+
+	// Json对象转Json字符串
+	std::string json_string=student->to_json_string();
+
+	delete student;
+
+## 2.2 访问Json对象
+一共将Json对象分为了五个类型,分别是:JsonObject,JsonArray,JsonString,JsonNumber和JsonBoolean,这5个都实现了JsonBase接口.可以调用JsonObject和JsonArray的get_XXX方法来获得Json对象的字段,例如:
+
+	using jsonparser;
+
+	JsonString* name=student->get_string("name");   // 获取Json对象中的name字段
+	std::cout<<name->as_string()<<std::endl;        // 将name字段转化为std::string并输出
+	JsonArray* scores=student->get_array("scores"); // 获取Json对象中的scores字段
+	for (size_t i=0;i<scores->size();++i){          // 输出scores字段中的信息
+		std::cout<<scores->get_number(i)->as_int()<<std::endl;
 	}
-不过如果想要使用增强for循环来遍历数组就有点麻烦了，例如:
+对于JsonArray,你也可以使用增强for循环来遍历元素,例如:
 
-	/*
-	* 你不能这样做
-	* for (int score:value["scores"].as<vector<int>>()){
-	* 	int s=score;
-	* }
-	*/
-	// 如果想要使用增强for循环,你必须先转化为JsonArray再转化为vector
-	for (JsonNumber* score:value["scores"].as<JsonArray<JsonNumber>>().as<vector<JsonNumber*>>()){
-		int s=score->as<int>();
+	using jsonparser;
+
+	std::string json="{\"name\":\"kit\",\"age\":18,\"scores\":[60,70,80]}";
+
+	// Json字符串转Json对象
+	JsonObject* student=JsonParser::parse_to_object(json.c_str());
+
+	JsonArray* scores=student->get_array("scores"); // 获取Json对象中的scores字段
+	for (JsonBase* score:scores->as_vector()){      // 使用增强for循环遍历元素
+		std::cout<<((JsonNumber*)score)->as_int()<<std::endl;
 	}
-## 2.2 自定义Json类型
-库中提供了5中基本的Json类型：JsonString、JsonNumber、JsonBoolean、JsonArray和JsonObject，你可以使用这5中基本的Json类型来搭建自己的Json类型，  
-基本框架如下:
 
-	class Student:public JsonObject {
+	delete student;
+## 2.3 构造或修改Json对象
+你可以修改现有的Json对象,例如:
+
+	using jsonparser;
+
+	std::string json="{\"name\":\"kit\",\"age\":18,\"scores\":[60,70,80]}";
+
+	// Json字符串转Json对象
+	JsonObject* student=JsonParser::parse_to_object(json.c_str());
+
+	student->set("name",new JsonString("kitty")); // 将name字段修改为"kitty"
+	student->set("sex",new JsonString("f"));      // 新增一个sex字段,字段值为"f"
+	student->get_array("scores")->push_back(new JsonNumber(90)); // 在scores字段数组中新增一个值
+
+	delete student;
+你也可以从头构造出一个Json对象,例如:
+	
+	using jsonparser;
+
+	class Student :public JsonObject {
 	public:
-	JSON_OBJECT(Student)
-	Student(const string& name,int age,bool is_man,const std::initializer_list<double>& scores){
-		DEFINE_FIELDS;
-		SET_FIELD(this,JsonString,"name",name);
-		SET_FIELD(this,JsonNumber,"age",age);
-		SET_FIELD(this,JsonBoolean,"is_man",is_man);
-		SET_FIELD(this,JsonArray<JsonNumber>,"scores",scores);
-	}
-	private:
-	START_DEFINE_FIELD
-	DEFINE_FIELD(JsonString,"name");
-	DEFINE_FIELD(JsonNumber,"age");
-	DEFINE_FIELD(JsonBoolean,"is_man");
-	DEFINE_FIELD(JsonArray<JsonNumber>,"scores");
-	END_DEFINE_FIELD
-	};
-使用START_DEFINE_FIELD、DEFINE_FIELD和END_DEFINE_FIELD来定义Json类型中包含的元素，使用SET_FIELD来给Json类型中的元素赋值
-
-	Student* student=new Student("kit",18,true,{60,70,80});
-	// 以下2种获取方法是等价的
-	JsonString* name1=GET_FIELD(student,JsonString,"name");
-	JsonString* name2=student->get_field<JsonString>("name");
-	// 以下2种赋值方法是等价的
-	SET_FIELD(student,JsonString,"name","kit");
-	student->get_field<JsonString>("name")->set("kit");
-	// 注意: GET_FIELD和SET_FIELD只有当student是指针是才可以使用
-	delete student;
-## 2.3 Json类型与Json字符串的相互转化
-具体例子如下:
-
-	JsonParser parser=JsonParser::from_string("{\"name\":\"kit\",\"age\":18,\"scores\":{60,70,80}}");
-	// Json字符串转Json类型
-	Student* student=new Student; student->from_json_value(parser.get_root());
-	// Json类型转Json字符串
-	JsonParser temp=student->to_json_parser();
-
-	cout<<temp.to_json_string()<<endl;
-	delete student;
-## 2.4 构造或修改Json字符串
-你可以从头开始构造Json字符串，例如:
-
-	JsonParser p=JsonParser::get_empty();
-	JsonParser::Value& value=p.get_root();
-	value.create_object("route")["route"]
-		 .create_array("paths")["paths"].create_and_into_last_elem()
-		 .create_array("steps")["steps"]
-		 .push_back<JsonString>("123,321")
-		 .push_back<JsonString>("456,654")
-	     .move_out().move_out().move_out().move_out()
-		 .add<JsonString>("wuhu","ye");
-	cout<<p.to_json_string()<<endl;
-create_object和create_array方法通过传入的Key构造出空的Json类型和空的Json数组,  
-create_and_into_last_elem方法可以在数组中构造出一个元素并且移动到那个元素中去。  
-move_out方法就是移动到上一层来。  
-上面的代码创建的Json字符串为:
-
-	{
-	"route":{
-		"paths":[{"steps":["123,321","456,654"]}],
-		"wuhu":"ye"
+		Student(const std::string& name,int age){
+			this->set("name",new JsonString(name));
+			this->set("age",new JsonNumber(age));
 		}
-	}
-除了上面代码演示的方法，还有add方法和set方法，例如：
+	};
 
-	Student* student=new Student("kit",18,true,{60,70,80});
-	JsonParser p=JsonParser::get_empty();
-	JsonParser::Value& value=p.get_root();
-	value.add<JsonString>("name","kit")
-		 .add<JsonNumber>("age",18)
-		 .add<JsonArray<JsonNumber>>("scores",JsonArray<JsonNumber>({60,70,80}))
-	     .add<Student>("student",*student);
-	value.set<JsonString>("name","kitty");
-	value["age"].set<JsonNumber>(20);
-	cout<<p.to_json_string()<<endl;
-不过需要注意的是，这些方法的模板参数只能是Json类型。
+	int main(){
+		JsonObject* school=new JsonObject; // 新建一个JsonObject对象
+		JsonArray* students=nullptr;
+		school->create_array("students")->to_array("students",&students) // 新建"students"的数组字段,并赋值给students变量
+			->set("name",new JsonString("University")); // 新建一个name字段
+		students->push_back(new Student("kit",18))      // 为students字段添加学生
+			->push_back(new Student("kitty",20))
+			->push_back(new Student("world",16));
+		std::cout<<school->to_json_string()<<std::endl;
+		delete school;
+		return 0;
+	}
+## 2.4 注意事项
+对于JsonParser构造出来的Json对象需要用delete销毁,除了传入Json对象方法的Json对象指针,其他构造出来的Json对象指针都需要进行销毁.
 # 3. Demo
-项目中的main.cpp就是Demo
+就是srcs下的main.cpp
