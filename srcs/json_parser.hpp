@@ -5,8 +5,6 @@
 #include <map>
 #include <vector>
 
-#include <iostream>
-
 #define __JSON_PARSER_START_NAMESPACE namespace jsonparser {
 #define __JSON_PARSER_END_NAMESPACE };
 
@@ -19,10 +17,19 @@ class JsonString;
 class JsonNumber;
 class JsonBoolean;
 
+template <typename T>
+class __json_parser_create {
+public:
+	T* operator()() const {
+		return new T();
+	}
+};
+
 class JsonBase {
 public:
+	virtual ~JsonBase(){}
 	virtual std::string to_json_string() const=0;
-	virtual void assign(const JsonBase*)=0;
+	virtual void assign(const JsonBase&)=0;
 	// clone self
 	virtual JsonBase* clone() const=0;
 };
@@ -32,11 +39,62 @@ public:
 	~JsonObject(){
 		__release();
 	}
-	void set(const std::string& key,JsonBase* obj){
+
+	void erase(const std::string& key){
+		delete __values[key];
+		__values.erase(key);
+	}
+
+	JsonObject* create_object(const std::string& key){
+		if (__values.count(key)>0) return nullptr;
+		JsonObject* new_object=__json_parser_create<JsonObject>()();
+		__values.insert(make_pair(key,(JsonBase*)new_object));
+		return this;
+	}
+
+	JsonObject* create_array(const std::string& key){
+		if (__values.count(key)>0) return nullptr;
+		JsonArray* new_array=__json_parser_create<JsonArray>()();
+		__values.insert(make_pair(key,(JsonBase*)new_array));
+		return this;
+	}
+
+	bool has_field(const std::string& key) const {
+		return __values.count(key)>0;
+	}
+
+	JsonObject* set(const std::string& key,JsonBase* obj){
 		if (__values.count(key)>0){
 			delete __values[key]; __values.erase(key);
 		}
 		__values.insert(std::make_pair(key,obj));
+		return this;
+	}
+
+	JsonObject* to_object (const std::string& key,JsonObject**  target){
+		if (*target!=nullptr) return this;
+		*target=get_object(key);
+		return this;
+	}
+	JsonObject* to_array  (const std::string& key,JsonArray**   target){
+		if (*target!=nullptr) return this;
+		*target=get_array(key);
+		return this;
+	}
+	JsonObject* to_string (const std::string& key,JsonString**  target){
+		if (*target!=nullptr) return this;
+		*target=get_string(key);
+		return this;
+	}
+	JsonObject* to_number (const std::string& key,JsonNumber**  target){
+		if (*target!=nullptr) return this;
+		*target=get_number(key);
+		return this;
+	}
+	JsonObject* to_boolean(const std::string& key,JsonBoolean** target){
+		if (*target!=nullptr) return this;
+		*target=get_boolean(key);
+		return this;
 	}
 
 	JsonObject*  get_object (const std::string& key) { return (JsonObject*) (__get(key)); }
@@ -46,15 +104,15 @@ public:
 	JsonBoolean* get_boolean(const std::string& key) { return (JsonBoolean*)(__get(key)); }
 
 	const JsonObject*  get_object (const std::string& key) const
-	{ return (const JsonObject*) (__get(key)); }
+	{ return (const JsonObject* ) (__get(key)); }
 	const JsonArray*   get_array  (const std::string& key) const
-	{ return (const JsonArray*)  (__get(key)); }
+	{ return (const JsonArray*  ) (__get(key)); }
 	const JsonString*  get_string (const std::string& key) const
-	{ return (const JsonString*) (__get(key)); }
+	{ return (const JsonString* ) (__get(key)); }
 	const JsonNumber*  get_number (const std::string& key) const
-	{ return (const JsonNumber*) (__get(key)); }
+	{ return (const JsonNumber* ) (__get(key)); }
 	const JsonBoolean* get_boolean(const std::string& key) const
-	{ return (const JsonBoolean*)(__get(key)); }
+	{ return (const JsonBoolean*) (__get(key)); }
 
 	std::string to_json_string() const override {
 		std::string result;
@@ -72,11 +130,11 @@ public:
 
 		return result;
 	}
-	void assign(const JsonBase* r) override {
-		if (this==r) return;
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
 		__release();
-		const JsonObject* rhs=static_cast<const JsonObject*>(r);
-		const std::map<std::string,JsonBase*>* rhs_values=&(rhs->__values);
+		const JsonObject& rhs=static_cast<const JsonObject&>(r);
+		const std::map<std::string,JsonBase*>* rhs_values=&(rhs.__values);
 
 		for (std::map<std::string,JsonBase*>::const_iterator p=rhs_values->begin();p!=rhs_values->end();++p){
 			const std::string& key=p->first;
@@ -110,12 +168,125 @@ private:
 class JsonArray :public JsonBase {
 public:
 	JsonArray() :JsonBase() {}
+	JsonArray(const std::initializer_list<JsonBase*>& arr) :JsonBase(),__array(arr){}
 	~JsonArray(){
 		__release();
 	}
-	void push_back(JsonBase* obj){
+
+	JsonArray* push_back(JsonBase* obj){
 		__array.push_back(obj);
+		return this;
 	}
+
+	JsonArray* pop_back(){
+		delete __array.back();
+		__array.pop_back();
+		return this;
+	}
+
+	size_t size()   const { return __array.size(); }
+
+	size_t length() const { return __array.size(); }
+
+	JsonArray* erase(size_t idx){
+		delete __array[idx];
+		__array.erase(__array.begin()+idx);
+		return this;
+	}
+
+	JsonArray* insert(size_t idx,JsonBase* obj){
+		__array.insert(__array.begin()+idx,obj);
+		return this;
+	}
+
+	JsonArray* clear(){
+		__release();
+		return this;
+	}
+
+	JsonArray* create_object(){
+		JsonObject* new_object=__json_parser_create<JsonObject>()();
+		__array.push_back((JsonBase*)new_object);
+		return this;
+	}
+
+	JsonArray* create_array(){
+		JsonArray* new_array=__json_parser_create<JsonArray>()();
+		__array.push_back((JsonBase*)new_array);
+		return this;
+	}
+
+	JsonArray* create_object(size_t idx){
+		JsonObject* new_object=__json_parser_create<JsonObject>()();
+		__array.insert(__array.begin()+idx,(JsonBase*)new_object);
+		return this;
+	}
+
+	JsonArray* create_array(size_t idx){
+		JsonArray* new_array=__json_parser_create<JsonArray>()();
+		__array.insert(__array.begin()+idx,(JsonBase*)new_array);
+		return this;
+	}
+
+	JsonArray* to_object (size_t idx,JsonObject**  target){
+		if (*target!=nullptr) return this;
+		*target=get_object(idx);
+		return this;
+	}
+	JsonArray* to_array  (size_t idx,JsonArray**   target){
+		if (*target!=nullptr) return this;
+		*target=get_array(idx);
+		return this;
+	}
+	JsonArray* to_string (size_t idx,JsonString**  target){
+		if (*target!=nullptr) return this;
+		*target=get_string(idx);
+		return this;
+	}
+	JsonArray* to_number (size_t idx,JsonNumber**  target){
+		if (*target!=nullptr) return this;
+		*target=get_number(idx);
+		return this;
+	}
+	JsonArray* to_boolean(size_t idx,JsonBoolean** target){
+		if (*target!=nullptr) return this;
+		*target=get_boolean(idx);
+		return this;
+	}
+
+	JsonObject*  get_back_object()  { return (JsonObject*)  __array.back(); }
+	JsonArray*   get_back_array ()  { return (JsonArray*)   __array.back(); }
+	JsonString*  get_back_string()  { return (JsonString*)  __array.back(); }
+	JsonNumber*  get_back_number()  { return (JsonNumber*)  __array.back(); }
+	JsonBoolean* get_back_boolean() { return (JsonBoolean*) __array.back(); }
+
+	const JsonObject*  get_back_object () const
+	{ return (const JsonObject* ) (__array.back()); }
+	const JsonArray*   get_back_array  () const
+	{ return (const JsonArray*  ) (__array.back()); }
+	const JsonString*  get_back_string () const
+	{ return (const JsonString* ) (__array.back()); }
+	const JsonNumber*  get_back_number () const
+	{ return (const JsonNumber* ) (__array.back()); }
+	const JsonBoolean* get_back_boolean() const
+	{ return (const JsonBoolean*) (__array.back()); }
+
+	JsonObject*  get_front_object () { return (JsonObject* ) (__array.front()); }
+	JsonArray*   get_front_array  () { return (JsonArray*  ) (__array.front()); }
+	JsonString*  get_front_string () { return (JsonString* ) (__array.front()); }
+	JsonNumber*  get_front_number () { return (JsonNumber* ) (__array.front()); }
+	JsonBoolean* get_front_boolean() { return (JsonBoolean*) (__array.front()); }
+
+	const JsonObject*  get_front_object () const
+	{ return (const JsonObject* ) (__array.front()); }
+	const JsonArray*   get_front_array  () const
+	{ return (const JsonArray*  ) (__array.front()); }
+	const JsonString*  get_front_string () const
+	{ return (const JsonString* ) (__array.front()); }
+	const JsonNumber*  get_front_number () const
+	{ return (const JsonNumber* ) (__array.front()); }
+	const JsonBoolean* get_front_boolean() const
+	{ return (const JsonBoolean*) (__array.front()); }
 
 	JsonObject*  get_object (size_t idx) { return (JsonObject*) (__get(idx)); }
 	JsonArray*   get_array  (size_t idx) { return (JsonArray*)  (__get(idx)); }
@@ -124,15 +295,15 @@ public:
 	JsonBoolean* get_boolean(size_t idx) { return (JsonBoolean*)(__get(idx)); }
 
 	const JsonObject*  get_object (size_t idx) const
-	{ return (const JsonObject*) (__get(idx)); }
+	{ return (const JsonObject* ) (__get(idx)); }
 	const JsonArray*   get_array  (size_t idx) const
-	{ return (const JsonArray*)  (__get(idx)); }
+	{ return (const JsonArray*  ) (__get(idx)); }
 	const JsonString*  get_string (size_t idx) const
-	{ return (const JsonString*) (__get(idx)); }
+	{ return (const JsonString* ) (__get(idx)); }
 	const JsonNumber*  get_number (size_t idx) const
-	{ return (const JsonNumber*) (__get(idx)); }
+	{ return (const JsonNumber* ) (__get(idx)); }
 	const JsonBoolean* get_boolean(size_t idx) const
-	{ return (const JsonBoolean*)(__get(idx)); }
+	{ return (const JsonBoolean*) (__get(idx)); }
 
 	std::vector<JsonBase*> as_vector() { return __array; }
 
@@ -151,11 +322,11 @@ public:
 
 		return result;
 	}
-	void assign(const JsonBase* r) override {
-		if (this==r) return;
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
 		__release();
-		const JsonArray* rhs=static_cast<const JsonArray*>(r);
-		const std::vector<JsonBase*>* rhs_array=&(rhs->__array);
+		const JsonArray& rhs=static_cast<const JsonArray&>(r);
+		const std::vector<JsonBase*>* rhs_array=&(rhs.__array);
 
 		for (std::vector<JsonBase*>::const_iterator p=rhs_array->begin();p!=rhs_array->end();++p){
 			(this->__array).push_back((*p)->clone());
@@ -200,11 +371,11 @@ public:
 
 		return result;
 	}
-	void assign(const JsonBase* r) override {
-		if (this==r) return;
-		const JsonString* rhs=static_cast<const JsonString*>(r);
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		const JsonString& rhs=static_cast<const JsonString&>(r);
 
-		this->__string=rhs->__string;
+		this->__string=rhs.__string;
 	}
 	JsonBase* clone() const override {
 		JsonString* result=new JsonString;
@@ -232,11 +403,11 @@ public:
 
 		return result;
 	}
-	void assign(const JsonBase* r) override {
-		if (this==r) return;
-		const JsonNumber* rhs=static_cast<const JsonNumber*>(r);
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		const JsonNumber& rhs=static_cast<const JsonNumber&>(r);
 
-		this->__number=rhs->__number;
+		this->__number=rhs.__number;
 	}
 	JsonBase* clone() const override {
 		JsonNumber* result=new JsonNumber;
@@ -263,11 +434,11 @@ public:
 
 		return result;
 	}
-	void assign(const JsonBase* r) override {
-		if (this==r) return;
-		const JsonBoolean* rhs=static_cast<const JsonBoolean*>(r);
+	void assign(const JsonBase& r) override {
+		if (this==&r) return;
+		const JsonBoolean& rhs=static_cast<const JsonBoolean&>(r);
 
-		this->__boolean=rhs->__boolean;
+		this->__boolean=rhs.__boolean;
 	}
 	JsonBase* clone() const override {
 		JsonBoolean* result=new JsonBoolean;
@@ -286,10 +457,10 @@ public:
 		size_t temp=0;
 		return __parse_json(json,0,temp);
 	}
-	static JsonObject* parse_for_object(const char* json){
+	static JsonObject* parse_to_object(const char* json){
 		return (JsonObject*)parse(json);
 	}
-	static JsonArray* parse_for_array(const char* json){
+	static JsonArray* parse_to_array(const char* json){
 		return (JsonArray*)parse(json);
 	}
 private:
