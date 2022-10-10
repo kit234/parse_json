@@ -8,6 +8,14 @@
 #define __JSON_PARSER_START_NAMESPACE namespace jsonparser {
 #define __JSON_PARSER_END_NAMESPACE };
 
+#if defined _MSC_VER
+#define __JSON_PARSER_FORCEINLINE __forceinline
+#elif defined __GNUC__
+#define __JSON_PARSER_FORCEINLINE __inline__ __attribute__((always_inline))
+#else
+#define __JSON_PARSER_FORCEINLINE inline
+#endif
+
 __JSON_PARSER_START_NAMESPACE
 
 class JsonBase;
@@ -508,6 +516,15 @@ public:
 	static JsonArray* parse_to_array(const char* json){
 		return (JsonArray*)parse(json);
 	}
+	static JsonString* parse_to_string(const char* json){
+		return (JsonString*)parse(json);
+	}
+	static JsonNumber* parse_to_number(const char* json){
+		return (JsonNumber*)parse(json);
+	}
+	static JsonBoolean* parse_to_boolean(const char* json){
+		return (JsonBoolean*)parse(json);
+	}
 private:
 	static JsonBase* __parse_json_object(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
 		JsonObject* result=__json_parser_create<JsonObject>()(prev);
@@ -515,6 +532,7 @@ private:
 		std::string key; key.clear();
 		while (json[idx]!='}'){
 			if (json[idx]==',') { ++idx; continue; }
+			if (key.empty()&&__is_blank(json,idx)) { ++idx; continue; }
 			if (json[idx]==':'){
 				size_t new_idx=0;
 				key=key.substr(1,key.size()-2); // remove the '"' of key
@@ -533,6 +551,7 @@ private:
 		size_t idx=l+1;
 		while (json[idx]!=']'){
 			if (json[idx]==',') { ++idx; continue; }
+			if (__is_blank(json,idx)) { ++idx; continue; }
 			size_t new_idx=0;
 			result->push_back(__parse_json(json,idx,new_idx,static_cast<JsonBase*>(result)));
 			idx=new_idx+1;
@@ -554,7 +573,7 @@ private:
 	static JsonBase* __parse_json_number(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
 		std::string temp; temp.clear();
 		size_t idx=l;
-		while (std::isdigit(json[idx])||json[idx]=='.'){
+		while (std::isdigit(json[idx])||json[idx]=='.'||json[idx]=='e'){
 			temp+=json[idx]; ++idx;
 		}
 		new_idx=idx-1;
@@ -565,17 +584,20 @@ private:
 	static JsonBase* __parse_json_boolean(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
 		JsonBoolean* result=__json_parser_create<JsonBoolean>()(prev);
 		if (json[l]=='t'){
-			new_idx=l+3;
+			new_idx=l;
+			while (json[new_idx]!='e') ++new_idx;
 			result->assign(true);
 		}
 		else{
-			new_idx=l+4;
+			new_idx=l;
+			while (json[new_idx]!='e') ++new_idx;
 			result->assign(false);
 		}
 		return static_cast<JsonBase*>(result);
 	}
 
 	static JsonBase* __parse_json(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
+		while (__is_blank(json,l)) ++l;
 		char ch=json[l];
 		if (ch=='{')          return __parse_json_object (json,l,new_idx,prev);
 		if (ch=='[')          return __parse_json_array  (json,l,new_idx,prev);
@@ -584,7 +606,52 @@ private:
 		if (ch=='t'||ch=='f') return __parse_json_boolean(json,l,new_idx,prev);
 		return nullptr;
 	}
+
+	static bool __is_blank(const char* json,size_t l){
+		return (json[l]==' ')||(json[l]=='\t')||(json[l]=='\r\n')||(json[l]=='\n');
+	}
 };
+
+__JSON_PARSER_FORCEINLINE JsonBase*    operator"" _json        (const char* s,size_t){
+	return JsonParser::parse(s);
+}
+__JSON_PARSER_FORCEINLINE JsonObject*  operator"" _json_object (const char* s,size_t){
+	return JsonParser::parse_to_object(s);
+}
+__JSON_PARSER_FORCEINLINE JsonArray*   operator"" _json_array  (const char* s,size_t){
+	return JsonParser::parse_to_array(s);
+}
+__JSON_PARSER_FORCEINLINE JsonString*  operator"" _json_string (const char* s,size_t){
+	return JsonParser::parse_to_string(s);
+}
+__JSON_PARSER_FORCEINLINE JsonNumber*  operator"" _json_number (const char* s,size_t){
+	return JsonParser::parse_to_number(s);
+}
+__JSON_PARSER_FORCEINLINE JsonBoolean* operator"" _json_boolean(const char* s,size_t){
+	return JsonParser::parse_to_boolean(s);
+}
+
+__JSON_PARSER_FORCEINLINE JsonNumber*  operator"" _json_number(unsigned long long i){
+	JsonNumber* res=__json_parser_create<JsonNumber>()(nullptr);
+	res->assign(static_cast<double>(i));
+	return res;
+}
+__JSON_PARSER_FORCEINLINE JsonNumber*  operator"" _json_number(long double i){
+	JsonNumber* res=__json_parser_create<JsonNumber>()(nullptr);
+	res->assign(static_cast<double>(i));
+	return res;
+}
+
+__JSON_PARSER_FORCEINLINE JsonBoolean* operator"" _json_boolean(unsigned long long b){
+	JsonBoolean* res=__json_parser_create<JsonBoolean>()(nullptr);
+	res->assign((b!=0.0));
+	return res;
+}
+__JSON_PARSER_FORCEINLINE JsonBoolean* operator"" _json_boolean(long double b){
+	JsonBoolean* res=__json_parser_create<JsonBoolean>()(nullptr);
+	res->assign((b!=0.0));
+	return res;
+}
 
 __JSON_PARSER_END_NAMESPACE
 
