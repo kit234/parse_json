@@ -551,7 +551,6 @@ private:
 		size_t idx=l+1;
 		while (json[idx]!=']'){
 			if (json[idx]==',') { ++idx; continue; }
-			if (__is_blank(json,idx)) { ++idx; continue; }
 			size_t new_idx=0;
 			result->push_back(__parse_json(json,idx,new_idx,static_cast<JsonBase*>(result)));
 			idx=new_idx+1;
@@ -573,7 +572,7 @@ private:
 	static JsonBase* __parse_json_number(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
 		std::string temp; temp.clear();
 		size_t idx=l;
-		while (std::isdigit(json[idx])||json[idx]=='.'||json[idx]=='e'){
+		while (__is_digit(json[idx])||json[idx]=='.'||json[idx]=='e'){
 			temp+=json[idx]; ++idx;
 		}
 		new_idx=idx-1;
@@ -584,13 +583,11 @@ private:
 	static JsonBase* __parse_json_boolean(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
 		JsonBoolean* result=__json_parser_create<JsonBoolean>()(prev);
 		if (json[l]=='t'){
-			new_idx=l;
-			while (json[new_idx]!='e') ++new_idx;
+			new_idx=l+3;
 			result->assign(true);
 		}
 		else{
-			new_idx=l;
-			while (json[new_idx]!='e') ++new_idx;
+			new_idx=l+4;
 			result->assign(false);
 		}
 		return static_cast<JsonBase*>(result);
@@ -599,16 +596,19 @@ private:
 	static JsonBase* __parse_json(const char* json,size_t l,size_t& new_idx,JsonBase* prev){
 		while (__is_blank(json,l)) ++l;
 		char ch=json[l];
-		if (ch=='{')          return __parse_json_object (json,l,new_idx,prev);
-		if (ch=='[')          return __parse_json_array  (json,l,new_idx,prev);
-		if (ch=='"')          return __parse_json_string (json,l,new_idx,prev);
-		if (std::isdigit(ch)) return __parse_json_number (json,l,new_idx,prev);
-		if (ch=='t'||ch=='f') return __parse_json_boolean(json,l,new_idx,prev);
+		if (ch=='{')             return __parse_json_object (json,l,new_idx,prev);
+		if (ch=='[')             return __parse_json_array  (json,l,new_idx,prev);
+		if (ch=='"')             return __parse_json_string (json,l,new_idx,prev);
+		if (__is_digit(json[l])) return __parse_json_number (json,l,new_idx,prev);
+		if (ch=='t'||ch=='f')    return __parse_json_boolean(json,l,new_idx,prev);
 		return nullptr;
 	}
 
-	static bool __is_blank(const char* json,size_t l){
+	static inline bool __is_blank(const char* json,size_t l){
 		return (json[l]==' ')||(json[l]=='\t')||(json[l]=='\r\n')||(json[l]=='\n');
+	}
+	static inline bool __is_digit(char ch){
+		return ch>='0'&&ch<='9';
 	}
 };
 

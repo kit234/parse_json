@@ -15,22 +15,16 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="srcs\json_parser.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="srcs\main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="srcs\test.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="srcs\json_parser.hpp">
-      <Filter>头文件</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="srcs\cpp.hint">
-      <Filter>资源文件</Filter>
-    </None>
-    <None Include="README.md" />
   </ItemGroup>
 </Project>
