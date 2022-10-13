@@ -1,10 +1,11 @@
 #include "json_parser.hpp"
 #include <iostream>
-#include <memory>
 
 using namespace std;
+using namespace kit;
 
 int main(){
-	kit::Json a;
+	Json<> obj=JsonParser<>::parse(R"({"name" : "kit","age":18 })");
+	cout<<obj<<endl;
 	return 0;
 }
