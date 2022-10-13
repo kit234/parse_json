@@ -98,7 +98,7 @@ public:
 		return res;
 	}
 	static Self null(){
-		Self res; ers.__construct_from_type(Type::NONE);
+		Self res; res.__construct_from_type(Type::NONE);
 		return res;
 	}
 public:
@@ -256,7 +256,6 @@ private:
 	}
 };
 
-
 /*
  * JsonParser
 */
@@ -322,9 +321,6 @@ private:
 		return ch==' '||ch=='\n'||ch=='\t';
 	}
 
-	static inline double __string2double(const StrType& str){
-
-	}
 };
 
 template <typename T,typename U>
