@@ -1305,7 +1305,10 @@ private:
 		new_idx=l+1;
 		while (json[new_idx]!='}'){
 			if (json[new_idx]==','){
-				__peek(json,new_idx,n); continue;
+				__peek(json,new_idx,n);
+				__skip_blank(json,new_idx,n);
+				__check_prefix(json[new_idx]);
+				continue;
 			}
 			if (key.empty()){
 				__skip_blank(json,new_idx,n);
@@ -1313,7 +1316,7 @@ private:
 			if (json[new_idx]==':'){
 				size_t tmp_new_idx=0;
 				__peek(json,new_idx,n);
-				__check_and_fix(key);
+				__check_and_fix_key(key);
 				JsonClass* obj=__parse(json,new_idx,tmp_new_idx,n).move_to_heap();
 				obj->__prev=&res;
 				res.__object.insert(std::make_pair(key,obj));
@@ -1324,6 +1327,9 @@ private:
 			}
 			key+=json[new_idx]; __peek(json,new_idx,n);
 		}
+		if (!key.empty()){
+			throw ParserException("Key Not Empty");
+		}
 		return res;
 	}
 	static JsonClass __parse_array(const char* json,size_t l,size_t& new_idx,size_t n){
@@ -1331,7 +1337,10 @@ private:
 		new_idx=l+1;
 		while (json[new_idx]!=']'){
 			if (json[new_idx]==','){
-				__peek(json,new_idx,n); continue;
+				__peek(json,new_idx,n);
+				__skip_blank(json,new_idx,n);
+				__check_prefix(json[new_idx]);
+				continue;
 			}
 			size_t tmp_new_idx=0;
 			JsonClass* obj=__parse(json,new_idx,tmp_new_idx,n).move_to_heap();
@@ -1349,6 +1358,7 @@ private:
 			res.__string+=json[new_idx];
 			__peek(json,new_idx,n);
 		}
+		__check_string(res.__string);
 		return res;
 	}
 	static JsonClass __parse_number(const char* json,size_t l,size_t& new_idx,size_t n){
@@ -1356,11 +1366,12 @@ private:
 		StrType tmp;
 		new_idx=l;
 		auto is_number_char=[](char ch){
-			return __is_digit(ch)||ch=='.'||ch=='e'||ch=='-';
+			return __is_digit(ch)||ch=='.'||ch=='e'||ch=='-'||ch=='E'||ch=='+';
 		};
 		while ((new_idx<n)&&is_number_char(json[new_idx])){
 			tmp+=json[new_idx]; __peek(json,new_idx,n);
 		}
+		__check_number(tmp);
 		--new_idx;
 		res.__number=convertion()(tmp);
 		return res;
@@ -1424,22 +1435,67 @@ private:
 		++idx;
 	}
 
-	static void __check_and_fix(StrType& key){
-		StrType tmp;
-		int brace_count=0;
-		for (size_t i=0;i<key.size();++i){
-			if (key[i]=='"'){
-				++brace_count; continue;
-			}
-			if (brace_count==1){
-				tmp+=key[i];
-			}
-		}
-		if (brace_count!=2){
-			std::string err_msg=std::string("Parser Error Key: ")+std::string(key.c_str());
+	static void __check_and_fix_key(StrType& key){
+		if (key[0]!='"'||key.back()!='"'){
+			std::string err_msg=std::string("Parser Error Key: ")+std::string(key);
 			throw ParserException(err_msg);
 		}
-		key=std::move(tmp);
+		key=key.substr(1,key.size()-2);
+		__check_string(key);
+	}
+
+	static void __check_number(const StrType& num){
+		bool is_first_number=true;
+		if (num.size()==1) return;
+		for (size_t i=0;i<num.size();++i){
+			if (num[i]=='0'){
+				if (is_first_number&&num[i+1]!='.'){
+					std::string err_msg=std::string("number cannot have leading zeroes: ")+
+						std::string(num);
+					throw ParserException(err_msg);
+				}
+			}
+			is_first_number=false;
+		}
+	}
+
+	static void __check_string(const StrType& str){
+		for (size_t i=0;i<str.size();++i){
+			if (str[i]=='\\'){
+				std::string err_msg=std::string("Illegal backslash escape ")+std::string(str);
+				if (i>=str.size()-1||!__check_backslash(str[i+1]))
+					throw ParserException(err_msg);
+			}
+			if (str[i]=='\t'){
+				throw ParserException("tab character in string "+std::string(str));
+			}
+			if (str[i]=='\n'||str[i]=='\r\n'){
+				throw ParserException("string line break "+std::string(str));
+			}
+		}
+	}
+	static bool __check_backslash(char ch){
+		if (ch=='\\') return true;
+		if (ch=='"')  return true;
+		if (ch=='b')  return true;
+		if (ch=='f')  return true;
+		if (ch=='n')  return true;
+		if (ch=='r')  return true;
+		if (ch=='t')  return true;
+		if (ch=='/')  return true;
+		if (ch=='u')  return true;
+		return false;
+	}
+
+	static void __check_prefix(char ch){
+		if (ch=='{') return;
+		if (ch=='[') return;
+		if (ch=='"') return;
+		if (__is_digit(ch)||ch=='-') return;
+		if (ch=='t'||ch=='f') return;
+		if (ch=='n') return;
+		std::string err_msg=std::string("Error Prefix: '")+ch+std::string("'");
+		throw ParserException(err_msg);
 	}
 };
 
