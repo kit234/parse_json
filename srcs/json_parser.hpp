@@ -172,16 +172,16 @@ public:
 */
 class ParserException :public std::exception {
 public:
-	ParserException(const char* msg)
-		: std::exception(msg){}
+	ParserException(const std::string& msg)
+		: std::exception(msg.c_str()){}
 };
 /*
  *	JsonClassException
 */
 class JsonClassException:public std::exception {
 public:
-	JsonClassException(const char* msg)
-		: std::exception(msg){}
+	JsonClassException(const std::string& msg)
+		: std::exception(msg.c_str()){}
 };
 
 /*
@@ -1208,7 +1208,9 @@ private:
 
 	void __check_type(const Type& type) const {
 		if (this->__type!=type){
-			throw JsonClassException("Check Type Error");
+			std::string err_msg=std::string("Check Type Error: ")+__type_to_string(__type)+
+				std::string(" want: ")+__type_to_string(type);
+			throw JsonClassException(err_msg);
 		}
 	}
 
@@ -1237,8 +1239,21 @@ private:
 	}
 
 	void __check_key_exist(const StrType& key){
-		if (__object.count(key)>0)
-			throw JsonClassException("Key Exists");
+		if (__object.count(key)>0){
+			std::string err_msg=std::string("Key Exist: ")+key;
+			throw JsonClassException(err_msg);
+		}
+	}
+
+	std::string __type_to_string(const Type& type){
+		switch (type){
+		case Type::OBJECT : return "OBJECT";
+		case Type::ARRAY  : return "ARRAY" ;
+		case Type::STRING : return "STRING";
+		case Type::NUMBER : return "NUMBER";
+		case Type::BOOLEAN: return "BOOLEAN";
+		case Type::NONE   : return "NULL";
+		}
 	}
 };
 
@@ -1274,13 +1289,15 @@ private:
 			return __parse_array(json,l,new_idx,n);
 		if (json[l]=='"')
 			return __parse_string(json,l,new_idx,n);
-		if (__is_digit(json[l]))
+		if (__is_digit(json[l])||json[l]=='-')
 			return __parse_number(json,l,new_idx,n);
 		if (json[l]=='t'||json[l]=='f')
 			return __parse_boolean(json,l,new_idx,n);
 		if (json[l]=='n')
 			return __parse_null(json,l,new_idx,n);
-		throw ParserException("Parser Unknown Character");
+		std::string err_msg=std::string("Parser Unknown Character: ")+json[l]
+			+std::string("idx: ")+std::to_string(l);
+		throw ParserException(err_msg);
 	}
 	static JsonClass __parse_object(const char* json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::object();
@@ -1339,7 +1356,7 @@ private:
 		StrType tmp;
 		new_idx=l;
 		auto is_number_char=[](char ch){
-			return __is_digit(ch)||ch=='.'||ch=='e';
+			return __is_digit(ch)||ch=='.'||ch=='e'||ch=='-';
 		};
 		while ((new_idx<n)&&is_number_char(json[new_idx])){
 			tmp+=json[new_idx]; __peek(json,new_idx,n);
@@ -1370,6 +1387,7 @@ private:
 		return res;
 	}
 	static JsonClass __parse_null(const char* json,size_t l,size_t& new_idx,size_t n){
+		new_idx=l;
 		__peek(json,new_idx,n,'n');
 		__peek(json,new_idx,n,'u');
 		__peek(json,new_idx,n,'l');
@@ -1390,10 +1408,14 @@ private:
 		}
 	}
 	static void __peek(const char* json,size_t& idx,size_t n,char ch){
-		if (idx>=n)
+		if (idx>=n){
 			throw ParserException("Index Overstep the Boundary");
-		if (json[idx]!=ch)
-			throw ParserException("Parser Unknown Character");
+		}
+		if (json[idx]!=ch){
+			std::string err_msg=std::string("Parser Unknown Character: '")+json[idx]
+				+std::string("' want: '")+ch+std::string("' idx: ")+std::to_string(idx);
+			throw ParserException(err_msg);
+		}
 		++idx;
 	}
 	static void __peek(const char* json,size_t& idx,size_t n){
@@ -1414,7 +1436,8 @@ private:
 			}
 		}
 		if (brace_count!=2){
-			throw ParserException("Error Key");
+			std::string err_msg=std::string("Parser Error Key: ")+std::string(key.c_str());
+			throw ParserException(err_msg);
 		}
 		key=std::move(tmp);
 	}
