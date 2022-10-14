@@ -14,11 +14,11 @@
 #endif
 
 #if defined _MSC_VER
-#define __JSON_PARSER_FORCEINLINE __forceinline
+#define __JSON_PARSER_FORCE_INLINE __forceinline
 #elif defined __GNUC__
-#define __JSON_PARSER_FORCEINLINE __inline__ __attribute__((always_inline))
+#define __JSON_PARSER_FORCE_INLINE __inline__ __attribute__((always_inline))
 #else
-#define __JSON_PARSER_FORCEINLINE inline
+#define __JSON_PARSER_FORCE_INLINE inline
 #endif
 
 #define __JSON_PARSER_NUMBER_COMPATIBLE unsigned int,int,long,unsigned long,float,double,unsigned long long,long double
@@ -34,7 +34,7 @@
 #else
 #define __JSON_PARSER_STRING_COMPATIBLE_NO_CONSTCHAR std::string
 #define __JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_NO_CONSTCHAR(T) \
-	std::enable_if_t<is_string_compatible_v<__remove_extra_t<T>>&&(!std::is_same_v<T,const char*>),T>
+	std::enable_if_t<is_string_compatible_v<__remove_extra_t<T>>&&(!std::is_same_v<T,const char*>)&&(!std::is_same_v<T,const char[]>),T>
 #define __JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_CONSTCHAR(T) \
 	std::enable_if_t<std::is_same_v<T,const char*>,const char*>
 #endif
@@ -59,7 +59,7 @@
 __JSON_PARSER_NAMESPACE_START
 
 template <typename T>
-__JSON_PARSER_FORCEINLINE
+__JSON_PARSER_FORCE_INLINE
 void __destroy_at(T* ptr){
 #if defined __JSON_PARSER_CPP17
 	std::destroy_at(ptr);
@@ -211,12 +211,14 @@ class Json {
 		NumType                __number;
 		BooleanType            __boolean;
 	};
+
+	Self* __prev;
 public:
 	enum class Type {
 		OBJECT,ARRAY,STRING,NUMBER,BOOLEAN,NONE
 	} __type;
 public:
-	Json() :__type(Type::NONE){}
+	Json() :__type(Type::NONE),__prev(nullptr){}
 	Json(const Self& r){
 		__construct_from_type(r.__type);
 		__assign(&r);
@@ -234,6 +236,11 @@ public:
 	*/
 	// TODO: Other Construct
 
+	/*
+	 *	Iterator
+	*/
+	// TODO: Iterator
+
 	Type get_type() const { return __type; }
 
 	Self* clone() const {
@@ -242,6 +249,20 @@ public:
 		res->__assign(this);
 		return res;
 	}
+	Self* move_to_heap() {
+		Self* res=new Self();
+		res->__construct_from_type(this->__type);
+		res->__move(this);
+		return res;
+	}
+	Self& move_out()       { return *__prev; }
+	Self& move_out() const { return *__prev; }
+
+	bool is_object () const { return __type==Type::OBJECT ; }
+	bool is_array  () const { return __type==Type::ARRAY  ; }
+	bool is_string () const { return __type==Type::STRING ; }
+	bool is_number () const { return __type==Type::NUMBER ; }
+	bool is_boolean() const { return __type==Type::BOOLEAN; }
 
 	static Self object(){
 		Self res; res.__construct_from_type(Type::OBJECT);
@@ -289,11 +310,11 @@ public:
 	}
 public:
 	/*
-	 *	get
+	 *	as
 	*/
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE(T)
-		get()
+		as()
 	{
 		__check_type(Type::NUMBER);
 		return static_cast<T>(__number);
@@ -301,7 +322,7 @@ public:
 #if defined __JSON_PARSER_CPP17
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE(T)
-		get() const
+		as() const
 	{
 		__check_type(Type::STRING);
 		if constexpr (std::is_same_v<T,const char*>){
@@ -314,14 +335,14 @@ public:
 #else
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_NO_CONSTCHAR(T)
-		get() const
+		as() const
 	{
 		__check_type(Type::STRING);
 		return static_cast<T>(__string);
 	}
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_CONSTCHAR(T)
-		get() const
+		as() const
 	{
 		__check_type(Type::STRING);
 		return __string.c_str();
@@ -329,7 +350,7 @@ public:
 #endif
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE(T)
-		get() const
+		as() const
 	{
 		__check_type(Type::BOOLEAN);
 		return static_cast<T>(__boolean);
@@ -353,6 +374,513 @@ public:
 	const Self& at(size_t idx) const {
 		return *(__array.at(idx));
 	}
+
+	/*
+	 *	size
+	*/
+	size_t size() const {
+		__check_type_is_one_of(Type::OBJECT,Type::ARRAY,Type::STRING);
+		switch (__type){
+		case Type::OBJECT:
+			return __object.size();
+		case Type::ARRAY:
+			return __array.size();
+		case Type::STRING:
+			return __string.size();
+		default: break;
+		}
+		// Imposible
+		return 0;
+	}
+
+	/*
+	 *	clear
+	*/
+	void clear(){
+		__check_type_is_one_of(Type::OBJECT,Type::ARRAY,Type::STRING);
+		switch (__type){
+		case Type::OBJECT:
+			__object.clear(); break;
+		case Type::ARRAY:
+			__array.clear();  break;
+		case Type::STRING:
+			__string.clear(); break;
+		default: break;
+		}
+	}
+
+	/*
+	 *	insert
+	*/
+	Self& insert(const StrType& key){
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::null().move_to_heap(); obj->__prev=this;
+		__object.insert(std::make_pair(key,obj));
+		return *obj;
+	}
+	Self& insert(const StrType& key,const Self& value){
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		__object.insert(std::make_pair(key,value.clone()));
+		return *this;
+	}
+	Self& insert(const StrType& key,Self&& value){
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		__object.insert(std::make_pair(key,value.move_to_heap()));
+		return *this;
+	}
+#if defined __JSON_PARSER_CPP17
+	template <typename T>
+	Self& insert(const StrType& key,const T& value){
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=nullptr;
+		if constexpr (is_string_compatible_v<T>){
+			obj=Self::string().move_to_heap();
+			obj->__string=StrType(value);
+		}
+		if constexpr (is_number_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=NumType(value);
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=BooleanType(value);
+		}
+		if (obj!=nullptr) {
+			obj->__prev=this;
+			__object.insert(std::make_pair(key,obj));
+		}
+		return *this;
+	}
+	template <typename T>
+	Self& insert(const StrType& key,T&& value){
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=nullptr;
+		if constexpr (is_string_compatible_v<T>){
+			obj=Self::string().move_to_heap();
+			obj->__string=StrType(std::move(value));
+		}
+		if constexpr (is_number_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=NumType(std::move(value));
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=BooleanType(std::move(value));
+		}
+		if (obj!=nullptr) {
+			obj->__prev=this;
+			__object.insert(std::make_pair(key,obj));
+		}
+		return *this;
+	}
+#else
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		insert(const StrType& key,const T& value)
+	{
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(value);
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		insert(const StrType& key,T&& value)
+	{
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(std::move(value));
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		insert(const StrType& key,const T& value)
+	{
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::number().move_to_heap(); obj->__prev=this;
+		obj->__number=NumType(value);
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		insert(const StrType& key,T&& value)
+	{
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::number().move_to_heap(); obj->__prev=this;
+		obj->__number=NumType(std::move(value));
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		insert(const StrType& key,const T& value)
+	{
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::boolean().move_to_heap(); obj->__prev=this;
+		obj->__boolean=BooleanType(value);
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		insert(const StrType& key,T&& value)
+	{
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::boolean().move_to_heap(); obj->__prev=this;
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+#endif // __JSON_PARSER_CPP17
+	// can't convert const char&[n] to const char*
+	Self& insert(const StrType& key,const char* value){
+		__construct_type_if_null(Type::OBJECT);
+		__check_type(Type::OBJECT);
+		__check_key_exist(key);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(value);
+		__object.insert(std::make_pair(key,obj));
+		return *this;
+	}
+
+	Self& insert(size_t idx){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::null().move_to_heap(); obj->__prev=this;
+		__array.insert(__array.begin()+idx,obj);
+		return *obj;
+	}
+	Self& insert(size_t idx,const Self& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		__array.insert(__array.begin()+idx,value.clone());
+		return *this;
+	}
+	Self& insert(size_t idx,Self&& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		__array.insert(__array.begin()+idx,value.move_to_heap());
+		return *this;
+	}
+#if defined __JSON_PARSER_CPP17
+	template <typename T>
+	Self& insert(size_t idx,const T& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=nullptr;
+		if constexpr (is_string_compatible_v<T>){
+			obj=Self::string().move_to_heap();
+			obj->__string=StrType(value);
+		}
+		if constexpr (is_number_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=NumType(value);
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			obj=Self::boolean().move_to_heap();
+			obj->__boolean=BooleanType(value);
+		}
+		if (obj!=nullptr){
+			obj->__prev=this;
+			__array.insert(__array.begin()+idx,obj);
+		}
+		return *this;
+	}
+	template <typename T>
+	Self& insert(size_t idx,T&& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=nullptr;
+		if constexpr (is_string_compatible_v<T>){
+			obj=Self::string().move_to_heap();
+			obj->__string=StrType(std::move(value));
+		}
+		if constexpr (is_number_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=NumType(std::move(value));
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			obj=Self::boolean().move_to_heap();
+			obj->__boolean=BooleanType(std::move(value));
+		}
+		if (obj!=nullptr){
+			obj->__prev=this;
+			__array.insert(__array.begin()+idx,obj);
+		}
+		return *this;
+	}
+#else
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		insert(size_t idx,const T& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(value);
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		insert(size_t idx,T&& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(std::move(value));
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		insert(size_t idx,const T& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::number().move_to_heap(); obj->__prev=this;
+		obj->__number=NumType(value);
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		insert(size_t idx,T&& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::number().move_to_heap(); obj->__prev=this;
+		obj->__number=NumType(std::move(value));
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		insert(size_t idx,const T& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::boolean().move_to_heap(); obj->__prev=this;
+		obj->__boolean=BooleanType(value);
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		insert(size_t idx,T&& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::boolean().move_to_heap(); obj->__prev=this;
+		obj->__boolean=BooleanType(std::move(value));
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+#endif // __JSON_PARSER_CPP17
+	// can't convert const char&[n] to const char*
+	Self& insert(size_t idx,const char* value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(value);
+		__array.insert(__array.begin()+idx,obj);
+		return *this;
+	}
+
+	/*
+	 *	push_back
+	*/
+	Self& push_back(){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::null().move_to_heap(); obj->__prev=this;
+		__array.push_back(obj);
+		return *obj;
+	}
+	Self& push_back(const Self& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		__array.push_back(value.clone());
+		return *this;
+	}
+	Self& push_back(Self&& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		__array.push_back(value.move_to_heap());
+		return *this;
+	}
+#if defined __JSON_PARSER_CPP17
+	template <typename T>
+	Self& push_back(const T& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=nullptr;
+		if constexpr (is_string_compatible_v<T>){
+			obj=Self::string().move_to_heap();
+			obj->__string=StrType(value);
+		}
+		if constexpr (is_number_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=NumType(value);
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			obj=Self::boolean().move_to_heap();
+			obj->__boolean=BooleanType(value);
+		}
+		if (obj!=nullptr){
+			obj->__prev=nullptr;
+			__array.push_back(obj);
+		}
+		return *this;
+	}
+	template <typename T>
+	Self& push_back(T&& value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=nullptr;
+		if constexpr (is_string_compatible_v<T>){
+			obj=Self::string().move_to_heap();
+			obj->__string=StrType(std::move(value));
+		}
+		if constexpr (is_number_compatible_v<T>){
+			obj=Self::number().move_to_heap();
+			obj->__number=NumType(std::move(value));
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			obj=Self::boolean().move_to_heap();
+			obj->__boolean=BooleanType(std::move(value));
+		}
+		if (obj!=nullptr){
+			obj->__prev=nullptr;
+			__array.push_back(obj);
+		}
+		return *this;
+	}
+#else
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		push_back(const T& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(value);
+		__array.push_back(obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		push_back(T&& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(std::move(value));
+		__array.push_back(obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		push_back(const T& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::number().move_to_heap(); obj->__prev=this;
+		obj->__number=NumType(value);
+		__array.push_back(obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		push_back(T&& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::number().move_to_heap(); obj->__prev=this;
+		obj->__number=NumType(std::move(value));
+		__array.push_back(obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		push_back(const T& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::boolean().move_to_heap(); obj->__prev=this;
+		obj->__number=BooleanType(value);
+		__array.push_back(obj);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		push_back(T&& value)
+	{
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::boolean().move_to_heap(); obj->__prev=this;
+		obj->__number=BooleanType(std::move(value));
+		__array.push_back(obj);
+		return *this;
+	}
+#endif // __JSON_PARSER_CPP17
+	// can't convert const char&[n] to const char*
+	Self& push_back(const char* value){
+		__construct_type_if_null(Type::ARRAY);
+		__check_type(Type::ARRAY);
+		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
+		obj->__string=StrType(value);
+		__array.push_back(obj);
+		return *this;
+	}
+
+	/*
+	 *	pop_back
+	*/
+	Self& pop_back(){
+		__check_type(Type::ARRAY);
+		__array.pop_back();
+		return *this;
+	}
+
+	/*
+	 *	erase
+	*/
+	Self& erase(const StrType& key){
+		__check_type(Type::OBJECT);
+		__object.erase(key);
+		return *this;
+	}
+	Self& erase(size_t idx){
+		__check_type(Type::ARRAY);
+		__array.erase(__array.begin()+idx);
+		return *this;
+	}
 public:
 	Self& operator=(const Self& r){
 		__release();
@@ -366,6 +894,43 @@ public:
 		__move(&r);
 		return *this;
 	}
+
+#if defined __JSON_PARSER_CPP17
+	template <typename T>
+	Self& operator=(const T& value){
+		__release();
+		if constexpr (is_string_compatible_v<T>){
+			__construct_from_type(Type::STRING);
+			__string=StrType(value);
+		}
+		if constexpr (is_number_compatible_v<T>){
+			__construct_from_type(Type::NUMBER);
+			__number=NumType(value);
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			__construct_from_type(Type::BOOLEAN);
+			__boolean=BooleanType(value);
+		}
+		return *this;
+	}
+	template <typename T>
+	Self& operator=(T&& value){
+		__release();
+		if constexpr (is_string_compatible_v<T>){
+			__construct_from_type(Type::STRING);
+			__string=StrType(std::move(value));
+		}
+		if constexpr (is_number_compatible_v<T>){
+			__construct_from_type(Type::NUMBER);
+			__number=NumType(std::move(value));
+		}
+		if constexpr (is_boolean_compatible_v<T>){
+			__construct_from_type(Type::BOOLEAN);
+			__boolean=BooleanType(std::move(value));
+		}
+		return *this;
+	}
+#else
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
 		operator=(const T& num)
@@ -373,6 +938,15 @@ public:
 		__release();
 		__construct_from_type(Type::NUMBER);
 		__number=NumType(num);
+		return *this;
+	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self&)
+		operator=(T&& num)
+	{
+		__release();
+		__construct_from_type(Type::NUMBER);
+		__number=NumType(std::move(num));
 		return *this;
 	}
 	template <typename T>
@@ -385,6 +959,15 @@ public:
 		return *this;
 	}
 	template <typename T>
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self&)
+		operator=(T&& str)
+	{
+		__release();
+		__construct_from_type(Type::STRING);
+		__string=StrType(std::move(str));
+		return *this;
+	}
+	template <typename T>
 	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
 		operator=(const T& boolean)
 	{
@@ -393,14 +976,34 @@ public:
 		__boolean=BooleanType(boolean);
 		return *this;
 	}
+	template <typename T>
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self&)
+		operator=(T&& boolean)
+	{
+		__release();
+		__construct_from_type(Type::BOOLEAN);
+		__boolean=BooleanType(std::move(boolean));
+		return *this;
+	}
+#endif // __JSON_PARSER_CPP17
+	// can't convertion const char&[n] to const char*
+	Self& operator=(const char* str){
+		__release();
+		__construct_from_type(Type::STRING);
+		__string=StrType(str);
+		return *this;
+	}
 
 	/*
 	 *	operator[]
 	*/
 	Self& operator[](const StrType& key){
+		__construct_type_if_null(Type::OBJECT);
 		__check_type(Type::OBJECT);
 		if (__object.count(key)==0){
-			__object.insert(std::make_pair(key,null().clone()));
+			Self* null_obj=null().move_to_heap();
+			null_obj->__prev=this;
+			__object.insert(std::make_pair(key,null_obj));
 		}
 		return *(__object[key]);
 	}
@@ -410,10 +1013,8 @@ public:
 	}
 
 	Self& operator[](size_t idx){
+		__construct_type_if_null(Type::ARRAY);
 		__check_type(Type::ARRAY);
-		if (idx>=__array.size()){
-			throw JsonClassException("Array Index Overstep the Boundary");
-		}
 		return *(__array[idx]);
 	}
 	const Self& operator[](size_t idx) const {
@@ -475,16 +1076,16 @@ private:
 		}
 	}
 	void __construct_object(){
-		new (&(__object)) ObjType<StrType,Self*>();
+		new (&(__object))  ObjType<StrType,Self*>();
 	}
 	void __construct_array(){
-		new (&(__array)) ArrType<Self*>();
+		new (&(__array))   ArrType<Self*>();
 	}
 	void __construct_string(){
-		new (&(__string)) StrType();
+		new (&(__string))  StrType();
 	}
 	void __construct_number(){
-		new (&(__number)) NumType();
+		new (&(__number))  NumType();
 	}
 	void __construct_boolean(){
 		new (&(__boolean)) BooleanType();
@@ -492,15 +1093,16 @@ private:
 
 	void __assign(const Self* r){
 		this->__type=r->__type;
+		this->__prev=r->__prev;
 		switch (r->__type){
 		case Type::OBJECT:
-			__assign_object(r); break;
+			__assign_object(r);  break;
 		case Type::ARRAY:
-			__assign_array(r); break;
+			__assign_array(r);   break;
 		case Type::STRING:
-			__assign_string(r); break;
+			__assign_string(r);  break;
 		case Type::NUMBER:
-			__assign_number(r); break;
+			__assign_number(r);  break;
 		case Type::BOOLEAN:
 			__assign_boolean(r); break;
 		default: break;
@@ -530,6 +1132,7 @@ private:
 
 	void __move(Self* r){
 		this->__type=r->__type;
+		this->__prev=r->__prev;
 		switch (r->__type){
 		case Type::OBJECT:
 			__move_object(r); break;
@@ -608,6 +1211,35 @@ private:
 			throw JsonClassException("Check Type Error");
 		}
 	}
+
+	template <typename... Ts>
+	void __check_type_is_one_of(const Ts&... types) const {
+		if (!__return_true_if_type_is_one_of(this->__type,types...))
+			throw JsonClassException("Check Type Error");
+	}
+	template <typename T,typename... Ts>
+	std::enable_if_t<std::is_same_v<T,Type>,bool>
+		__return_true_if_type_is_one_of(const T& tf,const Ts&... types) const
+	{
+		return (this->__type==tf)||
+			   (__return_true_if_type_is_one_of(this->__type,types...));
+	}
+	template <typename T>
+	std::enable_if_t<std::is_same_v<T,Type>,bool>
+		__return_true_if_type_is_one_of(const T& tf) const
+	{
+		return (this->__type==tf);
+	}
+
+	void __construct_type_if_null(const Type& type) {
+		if (this->__type==Type::NONE)
+			__construct_from_type(type);
+	}
+
+	void __check_key_exist(const StrType& key){
+		if (__object.count(key)>0)
+			throw JsonClassException("Key Exists");
+	}
 };
 
 /*
@@ -665,7 +1297,9 @@ private:
 				size_t tmp_new_idx=0;
 				__peek(json,new_idx,n);
 				__check_and_fix(key);
-				res.__object.insert(std::make_pair(key,__parse(json,new_idx,tmp_new_idx,n).clone()));
+				JsonClass* obj=__parse(json,new_idx,tmp_new_idx,n).move_to_heap();
+				obj->__prev=&res;
+				res.__object.insert(std::make_pair(key,obj));
 				key.clear();
 				new_idx=tmp_new_idx+1;
 				__skip_blank(json,new_idx,n);
@@ -683,7 +1317,9 @@ private:
 				__peek(json,new_idx,n); continue;
 			}
 			size_t tmp_new_idx=0;
-			res.__array.push_back(__parse(json,new_idx,tmp_new_idx,n).clone());
+			JsonClass* obj=__parse(json,new_idx,tmp_new_idx,n).move_to_heap();
+			obj->__prev=&res;
+			res.__array.push_back(obj);
 			new_idx=tmp_new_idx+1;
 			__skip_blank(json,new_idx,n);
 		}
@@ -746,7 +1382,7 @@ private:
 		return ch>='0'&&ch<='9';
 	}
 	static inline bool __is_blank(char ch){
-		return ch==' '||ch=='\n'||ch=='\t';
+		return ch==' '||ch=='\n'||ch=='\t'||ch=='\r\n';
 	}
 	static void __skip_blank(const char* json,size_t& idx,size_t n){
 		while (__is_blank(json[idx])){
@@ -787,29 +1423,29 @@ private:
 /*
  *	literal
 */
-__JSON_PARSER_FORCEINLINE
+__JSON_PARSER_FORCE_INLINE
 Json<> operator""__json(const char* json,size_t){
 	return JsonParser<>::parse(json);
 }
-__JSON_PARSER_FORCEINLINE
+__JSON_PARSER_FORCE_INLINE
 Json<> operator""__json(unsigned long long num){
 	Json<> res=Json<>::number();
 	res.__number=default_numtype(num);
 	return res;
 }
-__JSON_PARSER_FORCEINLINE
+__JSON_PARSER_FORCE_INLINE
 Json<> operator""__json(long double num){
 	Json<> res=Json<>::number();
 	res.__number=default_numtype(num);
 	return res;
 }
 
-template <template <typename,typename> typename ObjType,
-	      template <typename>          typename ArrType,
-	      typename StrType,
-	      typename NumType,
-	      typename BooleanType,
-	      typename convertion>
+template <template <typename,typename> typename ObjType=default_objtype,
+	      template <typename>          typename ArrType=default_arrtype,
+	      typename StrType=default_strtype,
+	      typename NumType=default_numtype,
+	      typename BooleanType=default_booleantype,
+	      typename convertion=default_convertion>
 std::ostream& operator<<(std::ostream& os,
 						 const Json<ObjType,ArrType,StrType,NumType,BooleanType,convertion>& obj)
 {
@@ -817,6 +1453,19 @@ std::ostream& operator<<(std::ostream& os,
 	return os;
 }
 
+template <template <typename,typename> typename ObjType=default_objtype,
+	template <typename>                typename ArrType=default_arrtype,
+	typename StrType=default_strtype,
+	typename NumType=default_numtype,
+	typename BooleanType=default_booleantype,
+	typename convertion=default_convertion>
+std::istream& operator>>(std::istream& is,
+						 Json<ObjType,ArrType,StrType,NumType,BooleanType,convertion>& obj)
+{
+	std::string json; is>>json;
+	obj=JsonParser<ObjType,ArrType,StrType,NumType,BooleanType,convertion>::parse(json.c_str());
+	return is;
+}
 
 __JSON_PARSER_NAMESPACE_END
 
