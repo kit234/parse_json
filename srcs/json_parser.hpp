@@ -218,12 +218,12 @@ public:
 		OBJECT,ARRAY,STRING,NUMBER,BOOLEAN,NONE
 	} __type;
 public:
-	Json() :__type(Type::NONE),__prev(nullptr){}
-	Json(const Self& r){
+	Json() noexcept :__prev(nullptr),__type(Type::NONE) {}
+	Json(const Self& r) {
 		__construct_from_type(r.__type);
 		__assign(&r);
 	}
-	Json(Self&& r){
+	Json(Self&& r) {
 		__construct_from_type(r.__type);
 		__move(&r);
 	}
@@ -234,6 +234,9 @@ public:
 	/*
 	 *	Other Construct
 	*/
+	Json(const Type& type) :__prev(nullptr) {
+		__construct_from_type(type);
+	}
 	// TODO: Other Construct
 
 	/*
@@ -241,55 +244,47 @@ public:
 	*/
 	// TODO: Iterator
 
-	Type get_type() const { return __type; }
+	Type get_type() const noexcept { return __type; }
 
 	Self* clone() const {
-		Self* res=new Self();
-		res->__construct_from_type(this->__type);
+		Self* res=new Self(this->__type);
 		res->__assign(this);
 		return res;
 	}
 	Self* move_to_heap() {
-		Self* res=new Self();
-		res->__construct_from_type(this->__type);
+		Self* res=new Self(this->__type);
 		res->__move(this);
 		return res;
 	}
-	Self& move_out()       { return *__prev; }
-	Self& move_out() const { return *__prev; }
+	Self& move_out()       noexcept { return *__prev; }
+	Self& move_out() const noexcept { return *__prev; }
 
-	bool is_object () const { return __type==Type::OBJECT ; }
-	bool is_array  () const { return __type==Type::ARRAY  ; }
-	bool is_string () const { return __type==Type::STRING ; }
-	bool is_number () const { return __type==Type::NUMBER ; }
-	bool is_boolean() const { return __type==Type::BOOLEAN; }
+	bool is_object () const noexcept { return __type==Type::OBJECT ; }
+	bool is_array  () const noexcept { return __type==Type::ARRAY  ; }
+	bool is_string () const noexcept { return __type==Type::STRING ; }
+	bool is_number () const noexcept { return __type==Type::NUMBER ; }
+	bool is_boolean() const noexcept { return __type==Type::BOOLEAN; }
 
-	static Self object(){
-		Self res; res.__construct_from_type(Type::OBJECT);
-		return res;
+	static inline Self object() {
+		return Self(Type::OBJECT);
 	}
-	static Self array(){
-		Self res; res.__construct_from_type(Type::ARRAY);
-		return res;
+	static inline Self array() {
+		return Self(Type::ARRAY);
 	}
-	static Self string(){
-		Self res; res.__construct_from_type(Type::STRING);
-		return res;
+	static inline Self string() {
+		return Self(Type::STRING);
 	}
-	static Self number(){
-		Self res; res.__construct_from_type(Type::NUMBER);
-		return res;
+	static inline Self number() {
+		return Self(Type::NUMBER);
 	}
-	static Self boolean(){
-		Self res; res.__construct_from_type(Type::BOOLEAN);
-		return res;
+	static inline Self boolean() {
+		return Self(Type::BOOLEAN);
 	}
-	static Self null(){
-		Self res; res.__construct_from_type(Type::NONE);
-		return res;
+	static inline Self null() {
+		return Self(Type::NONE);
 	}
 
-	StrType dump() const {
+	StrType dump() const noexcept {
 		switch (this->__type){
 		case Type::OBJECT:
 			return __dump_object();
@@ -1029,33 +1024,55 @@ private:
 		case Type::ARRAY:
 			__release_array();   break;
 		case Type::STRING:
-			__release_string();  break;
 		case Type::NUMBER:
-			__release_number();  break;
 		case Type::BOOLEAN:
-			__release_boolean(); break;
+		case Type::NONE:
+			break;
 		default: break;
 		}
+		__destroy();
 	}
 	void __release_object(){
 		for (auto& p:__object){
 			delete p.second;
 		}
-		__destroy_at(&(__object));
 	}
 	void __release_array(){
 		for (auto& p:__array){
 			delete p;
 		}
+	}
+
+	void __destroy(){
+		switch (__type){
+		case Type::OBJECT:
+			__destroy_object();  break;
+		case Type::ARRAY:
+			__destroy_array();   break;
+		case Type::STRING:
+			__destroy_string();  break;
+		case Type::NUMBER:
+			__destroy_number();  break;
+		case Type::BOOLEAN:
+			__destroy_boolean(); break;
+		case Type::NONE:
+			break;
+		default: break;
+		}
+	}
+	void __destroy_object(){
+		__destroy_at(&(__object));
+	}
+	void __destroy_array(){
 		__destroy_at(&(__array));
 	}
-	void __release_string(){
+	void __destroy_string(){
 		__destroy_at(&(__string));
 	}
-	void __release_number(){
+	void __destroy_number(){
 		__destroy_at(&(__number));
 	}
-	void __release_boolean(){
+	void __destroy_boolean(){
 		__destroy_at(&(__boolean));
 	}
 
@@ -1072,6 +1089,8 @@ private:
 			__construct_number();  break;
 		case Type::BOOLEAN:
 			__construct_boolean(); break;
+		case Type::NONE:
+			break;
 		default: break;
 		}
 	}
@@ -1144,8 +1163,11 @@ private:
 			__move_number(r); break;
 		case Type::BOOLEAN:
 			__move_boolean(r); break;
+		case Type::NONE:
+			break;
 		default: break;
 		}
+		r->__destroy();
 		r->__type=Type::NONE;
 	}
 	void __move_object(Self* r){
@@ -1275,7 +1297,7 @@ public:
 		size_t tmp=0,n=std::strlen(json);
 		JsonClass res=__parse(json,0,tmp,n);
 		while ((++tmp)<n){
-			if (!__is_blank(json[tmp]))
+			if (!__is_blank(json,tmp,n))
 				throw ParserException("Json String Too Long");
 		}
 		return res;
@@ -1289,91 +1311,159 @@ private:
 			return __parse_array(json,l,new_idx,n);
 		if (json[l]=='"')
 			return __parse_string(json,l,new_idx,n);
-		if (__is_digit(json[l])||json[l]=='-')
+		if (__is_digit(json,l,n)||json[l]=='-')
 			return __parse_number(json,l,new_idx,n);
 		if (json[l]=='t'||json[l]=='f')
 			return __parse_boolean(json,l,new_idx,n);
 		if (json[l]=='n')
 			return __parse_null(json,l,new_idx,n);
 		std::string err_msg=std::string("Parser Unknown Character: ")+json[l]
-			+std::string("idx: ")+std::to_string(l);
+			+std::string(" idx: ")+std::to_string(l);
 		throw ParserException(err_msg);
 	}
 	static JsonClass __parse_object(const char* json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::object();
-		StrType key;
-		new_idx=l+1;
-		while (json[new_idx]!='}'){
-			if (json[new_idx]==','){
-				__peek(json,new_idx,n);
-				__skip_blank(json,new_idx,n);
-				__check_prefix(json[new_idx]);
-				continue;
-			}
-			if (key.empty()){
-				__skip_blank(json,new_idx,n);
-			}
-			if (json[new_idx]==':'){
-				size_t tmp_new_idx=0;
-				__peek(json,new_idx,n);
-				__check_and_fix_key(key);
-				JsonClass* obj=__parse(json,new_idx,tmp_new_idx,n).move_to_heap();
-				obj->__prev=&res;
-				res.__object.insert(std::make_pair(key,obj));
-				key.clear();
-				new_idx=tmp_new_idx+1;
-				__skip_blank(json,new_idx,n);
-				continue;
-			}
-			key+=json[new_idx]; __peek(json,new_idx,n);
+		new_idx=l;
+		__peek(json,new_idx,n,'{');
+		__skip_blank(json,new_idx,n);
+		__check_overstep_boundary(json,new_idx,n);
+		if (json[new_idx]=='}'){
+			__peek(json,new_idx,n);
 		}
-		if (!key.empty()){
-			throw ParserException("Key Not Empty");
+		else {
+			bool quit=false;
+			while (!quit){
+				__skip_blank(json,new_idx,n);
+				__check_overstep_boundary(json,new_idx,n);
+				size_t tmp_idx=0;
+				StrType key=__parse_string(json,new_idx,tmp_idx,n).__string;
+				new_idx=tmp_idx+1;
+				__skip_blank(json,new_idx,n);
+				__check_overstep_boundary(json,new_idx,n);
+				__peek(json,new_idx,n,':');
+				__skip_blank(json,new_idx,n);
+				__check_overstep_boundary(json,new_idx,n);
+				JsonClass* value=__parse(json,new_idx,tmp_idx,n).move_to_heap();
+				value->__prev=&res;
+				res.__object.insert(std::make_pair(key,value));
+				new_idx=tmp_idx+1;
+				__skip_blank(json,new_idx,n);
+				__check_overstep_boundary(json,new_idx,n);
+				if (json[new_idx]==','){
+					__peek(json,new_idx,n);
+				}
+				else {
+					__peek(json,new_idx,n,'}');
+					quit=true;
+				}
+			}
 		}
+		--new_idx;
 		return res;
 	}
 	static JsonClass __parse_array(const char* json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::array();
-		new_idx=l+1;
-		while (json[new_idx]!=']'){
-			if (json[new_idx]==','){
-				__peek(json,new_idx,n);
-				__skip_blank(json,new_idx,n);
-				__check_prefix(json[new_idx]);
-				continue;
-			}
-			size_t tmp_new_idx=0;
-			JsonClass* obj=__parse(json,new_idx,tmp_new_idx,n).move_to_heap();
-			obj->__prev=&res;
-			res.__array.push_back(obj);
-			new_idx=tmp_new_idx+1;
-			__skip_blank(json,new_idx,n);
+		new_idx=l;
+		__peek(json,new_idx,n,'[');
+		__skip_blank(json,new_idx,n);
+		__check_overstep_boundary(json,new_idx,n);
+		if (json[new_idx]==']'){
+			__peek(json,new_idx,n);
 		}
+		else {
+			bool quit=false;
+			while (!quit){
+				__skip_blank(json,new_idx,n);
+				__check_overstep_boundary(json,new_idx,n);
+				size_t tmp_idx=0;
+				JsonClass* value=__parse(json,new_idx,tmp_idx,n).move_to_heap();
+				value->__prev=&res;
+				res.__array.push_back(value);
+				new_idx=tmp_idx+1;
+				__skip_blank(json,new_idx,n);
+				__check_overstep_boundary(json,new_idx,n);
+				if (json[new_idx]==','){
+					__peek(json,new_idx,n);
+				}
+				else {
+					__peek(json,new_idx,n,']');
+					quit=true;
+				}
+			}
+		}
+		--new_idx;
 		return res;
 	}
 	static JsonClass __parse_string(const char* json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::string();
-		new_idx=l+1;
-		while (json[new_idx]!='"'){
-			res.__string+=json[new_idx];
-			__peek(json,new_idx,n);
+		new_idx=l;
+		__peek(json,new_idx,n,'"');
+		bool quit=false;
+		while (!quit){
+			__check_overstep_boundary(json,new_idx,n);
+			switch (json[new_idx]){
+			case '"': {
+				__peek(json,new_idx,n); quit=true; break;
+			}
+			case '\\': {
+				res.__string+=json[new_idx];
+				__peek(json,new_idx,n);
+				__check_control_character(json,new_idx,n);
+				res.__string+=json[new_idx];
+				__peek(json,new_idx,n);
+				break;
+			}
+			default: {
+				if (__is_blank(json,new_idx,n)&&json[new_idx]!=' '){
+					throw ParserException("String Contain Control Character");
+				}
+				res.__string+=json[new_idx];
+				__peek(json,new_idx,n);
+				break;
+			}
+			}
 		}
-		__check_string(res.__string);
+		--new_idx;
 		return res;
 	}
 	static JsonClass __parse_number(const char* json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::number();
-		StrType tmp;
+		StrType tmp; tmp.clear();
 		new_idx=l;
-		auto is_number_char=[](char ch){
-			return __is_digit(ch)||ch=='.'||ch=='e'||ch=='-'||ch=='E'||ch=='+';
-		};
-		while ((new_idx<n)&&is_number_char(json[new_idx])){
-			tmp+=json[new_idx]; __peek(json,new_idx,n);
+		if (json[new_idx]=='-'){
+			tmp+='-'; __peek(json,new_idx,n);
 		}
-		__check_number(tmp);
-		--new_idx;
+		if (__is_digit(json,new_idx,n)&&json[new_idx]!='0'){
+			tmp+=json[new_idx]; __peek(json,new_idx,n);
+			while (new_idx<n&&__is_digit(json,new_idx,n)){
+				tmp+=json[new_idx];
+				__peek(json,new_idx,n);
+			}
+		}
+		else {
+			__peek(json,new_idx,n,'0'); tmp+='0';
+		}
+		if (new_idx<n&&json[new_idx]=='.'){
+			tmp+='.'; __peek(json,new_idx,n);
+			do {
+				if (__is_digit(json,new_idx,n)){
+					tmp+=json[new_idx];
+					__peek(json,new_idx,n);
+				}
+			} while (new_idx<n&&__is_digit(json,new_idx,n));
+		}
+		if (new_idx<n&&(json[new_idx]=='e'||json[new_idx]=='E')){
+			tmp+=json[new_idx]; __peek(json,new_idx,n);
+			if (new_idx<n&&(json[new_idx]=='+'||json[new_idx]=='-')){
+				tmp+=json[new_idx]; __peek(json,new_idx,n);
+			}
+			do {
+				__check_digit(json,new_idx,n);
+				tmp+=json[new_idx]; __peek(json,new_idx,n);
+			} while (new_idx<n&&__is_digit(json,new_idx,n));
+		}
 		res.__number=convertion()(tmp);
+		--new_idx;
 		return res;
 	}
 	static JsonClass __parse_boolean(const char* json,size_t l,size_t& new_idx,size_t n){
@@ -1407,21 +1497,23 @@ private:
 		return JsonClass::null();
 	}
 
-	static inline bool __is_digit(char ch){
+	static inline bool __is_digit(const char* json,size_t idx,size_t n){
+		__check_overstep_boundary(json,idx,n);
+		char ch=json[idx];
 		return ch>='0'&&ch<='9';
 	}
-	static inline bool __is_blank(char ch){
+	static inline bool __is_blank(const char* json,size_t idx,size_t n){
+		__check_overstep_boundary(json,idx,n);
+		char ch=json[idx];
 		return ch==' '||ch=='\n'||ch=='\t'||ch=='\r\n';
 	}
 	static void __skip_blank(const char* json,size_t& idx,size_t n){
-		while (__is_blank(json[idx])){
+		while (idx<n&&__is_blank(json,idx,n)){
 			__peek(json,idx,n);
 		}
 	}
 	static void __peek(const char* json,size_t& idx,size_t n,char ch){
-		if (idx>=n){
-			throw ParserException("Index Overstep the Boundary");
-		}
+		__check_overstep_boundary(json,idx,n);
 		if (json[idx]!=ch){
 			std::string err_msg=std::string("Parser Unknown Character: '")+json[idx]
 				+std::string("' want: '")+ch+std::string("' idx: ")+std::to_string(idx);
@@ -1430,9 +1522,13 @@ private:
 		++idx;
 	}
 	static void __peek(const char* json,size_t& idx,size_t n){
-		if (idx>=n)
-			throw ParserException("Index Overstep the Boundary");
+		__check_overstep_boundary(json,idx,n);
 		++idx;
+	}
+	static void __check_overstep_boundary(const char* json,size_t idx,size_t n){
+		if (idx>=n){
+			throw ParserException("Index Overstep the Boundary");
+		}
 	}
 
 	static void __check_and_fix_key(StrType& key){
@@ -1441,61 +1537,27 @@ private:
 			throw ParserException(err_msg);
 		}
 		key=key.substr(1,key.size()-2);
-		__check_string(key);
 	}
 
-	static void __check_number(const StrType& num){
-		bool is_first_number=true;
-		if (num.size()==1) return;
-		for (size_t i=0;i<num.size();++i){
-			if (num[i]=='0'){
-				if (is_first_number&&num[i+1]!='.'){
-					std::string err_msg=std::string("number cannot have leading zeroes: ")+
-						std::string(num);
-					throw ParserException(err_msg);
-				}
-			}
-			is_first_number=false;
+	static void __check_control_character(const char* json,size_t idx,size_t n){
+		__check_overstep_boundary(json,idx,n);
+		char ch=json[idx];
+		if (ch=='"')  return;
+		if (ch=='\\') return;
+		if (ch=='/')  return;
+		if (ch=='b')  return;
+		if (ch=='f')  return;
+		if (ch=='n')  return;
+		if (ch=='r')  return;
+		if (ch=='t')  return;
+		if (ch=='u')  return;
+		throw ParserException(std::string("Parser Unknown Control Character: ")+ch);
+	}
+
+	static void __check_digit(const char* json,size_t idx,size_t n){
+		if (!__is_digit(json,idx,n)){
+			throw ParserException("Want Digit");
 		}
-	}
-
-	static void __check_string(const StrType& str){
-		for (size_t i=0;i<str.size();++i){
-			if (str[i]=='\\'){
-				std::string err_msg=std::string("Illegal backslash escape ")+std::string(str);
-				if (i>=str.size()-1||!__check_backslash(str[i+1]))
-					throw ParserException(err_msg);
-			}
-			if (str[i]=='\t'){
-				throw ParserException("tab character in string "+std::string(str));
-			}
-			if (str[i]=='\n'||str[i]=='\r\n'){
-				throw ParserException("string line break "+std::string(str));
-			}
-		}
-	}
-	static bool __check_backslash(char ch){
-		if (ch=='\\') return true;
-		if (ch=='"')  return true;
-		if (ch=='b')  return true;
-		if (ch=='f')  return true;
-		if (ch=='n')  return true;
-		if (ch=='r')  return true;
-		if (ch=='t')  return true;
-		if (ch=='/')  return true;
-		if (ch=='u')  return true;
-		return false;
-	}
-
-	static void __check_prefix(char ch){
-		if (ch=='{') return;
-		if (ch=='[') return;
-		if (ch=='"') return;
-		if (__is_digit(ch)||ch=='-') return;
-		if (ch=='t'||ch=='f') return;
-		if (ch=='n') return;
-		std::string err_msg=std::string("Error Prefix: '")+ch+std::string("'");
-		throw ParserException(err_msg);
 	}
 };
 

@@ -42,9 +42,35 @@ void test_pass(){
 			string tmp,line;
 			while (getline(fs,line)) { tmp+=line; tmp+='\n'; }
 			fs.close();
-			cout<<filename<<endl;
 			const char* json=tmp.c_str();
 			Json<> obj=JsonParser<>::parse(json);
+		}
+		catch (ParserException& e){
+			cout<<e.what()<<endl;
+			cout<<"TEST FAILED"<<endl;
+			exit(-1);
+		}
+	}
+	cout<<"TEST SUCCESS"<<endl;
+}
+
+void test_large_json(){
+	cout<<"TEST LARGE JSON..."<<endl;
+	fs::path dir("data/large");
+	for (fs::directory_iterator ite(dir),end;ite!=end;++ite){
+		string filename=string("data/large/")+(ite->path().filename().string());
+		ifstream fs;
+		fs.open(filename.c_str());
+		string line,tmp;
+		while (getline(fs,line)) { tmp+=line; tmp+='\n'; }
+		fs.close();
+		cout<<"JSON SIZE: "<<tmp.size()<<" Byte,";
+		const char* json=tmp.c_str();
+		try {
+			clock_t start_time=clock();
+			Json<> obj=JsonParser<>::parse(json);
+			clock_t end_time=clock();
+			cout<<"Cost Time: "<<end_time-start_time<<" ms"<<endl;
 		}
 		catch (ParserException& e){
 			cout<<e.what()<<endl;
@@ -58,5 +84,6 @@ void test_pass(){
 int main(){
 	test_fail();
 	test_pass();
+	test_large_json();
 	return 0;
 }
