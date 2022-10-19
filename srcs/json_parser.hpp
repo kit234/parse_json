@@ -70,27 +70,43 @@ void __destroy_at(T* ptr){
 }
 
 /*
+ *	__is_string_const_array: if the T is const char*(&)[N]
+*/
+template <typename T>
+struct __is_string_const_array :std::false_type {};
+template <size_t N>
+struct __is_string_const_array<const char(&)[N]> :std::true_type {};
+template <typename T>
+constexpr bool __is_string_const_array_v=__is_string_const_array<T>::value;
+
+/*
 *	__is_one_of: if the T is one of the types.
 */
 template <typename T,typename U,typename... Ts>
-struct __is_one_of {
-	static constexpr bool value=(std::is_same_v<T,U>)||(__is_one_of<T,Ts...>::value);
-};
+struct __is_one_of
+	:std::bool_constant<std::is_same_v<T,U>||__is_one_of<T,Ts...>::value>
+{};
 template <typename T,typename U>
-struct __is_one_of<T,U> {
-	static constexpr bool value=std::is_same_v<T,U>;
-};
+struct __is_one_of<T,U>
+	:std::is_same<T,U>
+{};
 
 /*
  *	__remove_extra: remove the (const,pointer,reference) of type.
 */
 template <typename T>
-struct __remove_extra {
-	using type=std::remove_const_t<std::remove_reference_t<std::remove_pointer_t<T>>>;
-};
+struct __remove_extra
+	:std::remove_const<std::remove_reference_t<std::remove_pointer_t<T>>>
+{};
 template <>
-struct __remove_extra<const char*> {
+struct __remove_extra<const char*>
+{
 	using type=const char*;
+};
+template <size_t N>
+struct __remove_extra<const char(&)[N]>
+{
+	using type=const char(&)[N];
 };
 template <typename T>
 using __remove_extra_t=typename __remove_extra<T>::type;
@@ -99,9 +115,9 @@ using __remove_extra_t=typename __remove_extra<T>::type;
  *	__is_number_compatible: if the T is the number compatible
 */
 template <typename T>
-struct is_number_compatible {
-	static constexpr bool value=__is_one_of<T,__JSON_PARSER_NUMBER_COMPATIBLE>::value;
-};
+struct is_number_compatible
+	:__is_one_of<T,__JSON_PARSER_NUMBER_COMPATIBLE>
+{};
 template <typename T>
 constexpr bool is_number_compatible_v=is_number_compatible<T>::value;
 
@@ -110,18 +126,20 @@ constexpr bool is_number_compatible_v=is_number_compatible<T>::value;
 */
 #if defined __JSON_PARSER_CPP17
 template <typename T>
-struct is_string_compatible {
-	static constexpr bool value=__is_one_of<T,__JSON_PARSER_STRING_COMPATIBLE>::value;
-};
+struct is_string_compatible
+	:std::bool_constant<__is_one_of<T,__JSON_PARSER_STRING_COMPATIBLE>::value||
+		                __is_string_const_array_v<T>>
+{};
 #else
 template <typename T>
-struct is_string_compatible {
-	static constexpr bool value=__is_one_of<T,__JSON_PARSER_STRING_COMPATIBLE_NO_CONSTCHAR>::value;
-};
+struct is_string_compatible
+	:std::bool_constant<__is_one_of<T,__JSON_PARSER_STRING_COMPATIBLE_NO_CONSTCHAR>::value||
+	                    __is_string_const_array_v<T>>
+{};
 template <>
-struct is_string_compatible<const char*> {
-	static constexpr bool value=true;
-};
+struct is_string_compatible<const char*>
+	:std::true_type
+{};
 #endif
 template <typename T>
 constexpr bool is_string_compatible_v=is_string_compatible<T>::value;
@@ -130,9 +148,9 @@ constexpr bool is_string_compatible_v=is_string_compatible<T>::value;
  *	is_boolean_compatible: if the T is boolean compatible
 */
 template <typename T>
-struct is_boolean_compatible {
-	static constexpr bool value=__is_one_of<T,__JSON_PARSER_BOOLEAN_COMPATIBLE>::value;
-};
+struct is_boolean_compatible
+	:__is_one_of<T,__JSON_PARSER_BOOLEAN_COMPATIBLE>
+{};
 template <typename T>
 constexpr bool is_boolean_compatible_v=is_boolean_compatible<T>::value;
 
@@ -798,16 +816,6 @@ public:
 		return *this;
 	}
 #endif // __JSON_PARSER_CPP17
-	// can't convert const char&[n] to const char*
-	Self& insert(const StrType& key,const char* value){
-		__construct_type_if_null(Type::OBJECT);
-		__check_type(Type::OBJECT);
-		__check_key_exist(key);
-		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
-		obj->__string=StrType(value);
-		__object.insert(std::make_pair(key,obj));
-		return *this;
-	}
 
 	Self& insert(size_t idx){
 		__construct_type_if_null(Type::ARRAY);
@@ -943,16 +951,6 @@ public:
 		return *this;
 	}
 #endif // __JSON_PARSER_CPP17
-	// can't convert const char&[n] to const char*
-	Self& insert(size_t idx,const char* value)
-	{
-		__construct_type_if_null(Type::ARRAY);
-		__check_type(Type::ARRAY);
-		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
-		obj->__string=StrType(value);
-		__array.insert(__array.begin()+idx,obj);
-		return *this;
-	}
 
 	/*
 	 *	push_back
@@ -1091,15 +1089,6 @@ public:
 		return *this;
 	}
 #endif // __JSON_PARSER_CPP17
-	// can't convert const char&[n] to const char*
-	Self& push_back(const char* value){
-		__construct_type_if_null(Type::ARRAY);
-		__check_type(Type::ARRAY);
-		Self* obj=Self::string().move_to_heap(); obj->__prev=this;
-		obj->__string=StrType(value);
-		__array.push_back(obj);
-		return *this;
-	}
 
 	/*
 	 *	pop_back
@@ -1228,13 +1217,6 @@ public:
 		return *this;
 	}
 #endif // __JSON_PARSER_CPP17
-	// can't convertion const char&[n] to const char*
-	Self& operator=(const char* str){
-		__release();
-		__construct_from_type(Type::STRING);
-		__string=StrType(str);
-		return *this;
-	}
 
 	/*
 	 *	operator[]

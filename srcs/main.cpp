@@ -82,8 +82,10 @@ void test_large_json(){
 }
 
 int main(){
-	test_fail();
-	test_pass();
-	test_large_json();
+	//test_fail();
+	//test_pass();
+	//test_large_json();
+	Json<> obj=Json<>::object();
+	obj["name"]="kit";
 	return 0;
 }
