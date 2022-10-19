@@ -21,7 +21,7 @@ void test_fail(){
 			while (getline(fs,line)) { tmp+=line; tmp+='\n'; }
 			fs.close();
 			const char* json=tmp.c_str();
-			Json<> obj=JsonParser<>::parse(json);
+			UTF8Json obj=UTF8JsonParser::parse(json);
 		}
 		catch (...){
 			continue;
@@ -43,7 +43,7 @@ void test_pass(){
 			while (getline(fs,line)) { tmp+=line; tmp+='\n'; }
 			fs.close();
 			const char* json=tmp.c_str();
-			Json<> obj=JsonParser<>::parse(json);
+			UTF8Json obj=UTF8JsonParser::parse(json);
 		}
 		catch (ParserException& e){
 			cout<<e.what()<<endl;

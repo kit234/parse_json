@@ -51,6 +51,7 @@
 #include <vector>
 #include <string>
 #include <exception>
+#include <cstdint>
 
 #if defined __JSON_PARSER_CPP17
 #include <memory>
@@ -168,6 +169,243 @@ public:
 };
 
 /*
+*	UTF8 String and Convertion
+*/
+class default_utf8string {
+	friend std::ostream& operator<<(std::ostream&,const default_utf8string&);
+public:
+	default_utf8string() :__string() {}
+	default_utf8string(const char* str) :__string(str) {}
+	default_utf8string(const std::string& str) :__string(str) {}
+	default_utf8string(const default_utf8string& r) :__string(r.__string) {}
+	default_utf8string(default_utf8string&& r) :__string(std::move(r.__string)) {}
+	~default_utf8string(){}
+
+	size_t size() const {
+		size_t res=0;
+		for (size_t i=0;i<__string.size();){
+			size_t byte=__get_byte(static_cast<uint8_t>(__string[i]));
+			i+=byte;
+			++res;
+		}
+		return res;
+	}
+	const char* c_str() const { return __string.c_str(); }
+	void clear() { __string.clear(); }
+	bool empty() const { return __string.empty(); }
+	void pop_back() {
+		size_t src_idx=__get_src_idx(__get_src_idx(size()-1));
+		size_t byte=__get_byte(static_cast<uint8_t>(__string[src_idx]));
+		do {
+			__string.pop_back();
+			--byte;
+		} while (byte>0);
+	}
+public:
+	default_utf8string& operator=(const default_utf8string& r){
+		this->__string=r.__string;
+		return *this;
+	}
+	default_utf8string& operator=(default_utf8string&& r){
+		this->__string=std::move(r.__string);
+		return *this;
+	}
+	default_utf8string& operator+=(uint32_t ch){
+		size_t byte=__get_byte(ch);
+		do {
+			uint8_t idx_byte=__get_ith_byte(ch,byte);
+			__string+=idx_byte;
+			--byte;
+		} while (byte>0);
+		return *this;
+	}
+	default_utf8string& operator+=(const default_utf8string& r){
+		__string+=r.__string;
+		return *this;
+	}
+	uint32_t operator[](size_t idx) const {
+		size_t src_idx=__get_src_idx(idx);
+		size_t byte=__get_byte(static_cast<uint8_t>(__string[src_idx]));
+		uint32_t res=0;
+		do {
+			res<<=8;
+			res+=static_cast<uint8_t>(__string[src_idx]);
+			++src_idx;
+			--byte;
+		} while (byte>0);
+		return res;
+	}
+	bool operator<(const default_utf8string& r) const { return __string<r.__string; }
+private:
+	size_t __get_src_idx(size_t idx) const {
+		size_t res=0,n=__string.size();
+		for (size_t i=0;res<n&&i<idx;++i){
+			uint8_t ch=static_cast<uint8_t>(__string[res]);
+			size_t byte=__get_byte(ch);
+			res+=byte;
+		}
+		return res;
+	}
+	size_t __get_byte(uint8_t ch) const {
+		if (ch>static_cast<uint8_t>(0xF0)) return static_cast<size_t>(4);
+		if (ch>static_cast<uint8_t>(0xE0)) return static_cast<size_t>(3);
+		if (ch>static_cast<uint8_t>(0xC0)) return static_cast<size_t>(2);
+		return static_cast<size_t>(1);
+	}
+	size_t __get_byte(uint32_t ch) const {
+		if (ch>=static_cast<uint32_t>(0xF0000000)) return static_cast<size_t>(4);
+		if (ch>=static_cast<uint32_t>(0x00E00000)) return static_cast<size_t>(3);
+		if (ch>=static_cast<uint32_t>(0x0000C000)) return static_cast<size_t>(2);
+		return static_cast<size_t>(1);
+	}
+	uint8_t __get_ith_byte(uint32_t ch,size_t i) const {
+		switch (i){
+		case 1:
+			return static_cast<uint8_t>(ch&(0xFF));
+		case 2:
+			return static_cast<uint8_t>((ch&(0xFF00))>>8);
+		case 3:
+			return static_cast<uint8_t>((ch&(0xFF0000))>>16);
+		case 4:
+			return static_cast<uint8_t>((ch&(0xFF000000))>>24);
+		default: break;
+		}
+		// Imposible
+		return static_cast<uint8_t>(0);
+	}
+private:
+	std::string __string;
+};
+struct default_utf8convertion {
+	default_utf8string operator()(double num){
+		return default_utf8string(std::to_string(num));
+	}
+	double operator()(const default_utf8string& str){
+		return std::stod(str.c_str());
+	}
+};
+__JSON_PARSER_FORCE_INLINE
+std::ostream& operator<<(std::ostream& os,const default_utf8string& str){
+	os<<str.__string;
+	return os;
+}
+
+/*
+ *	GBK String and Convertion
+*/
+class default_gbkstring {
+	friend std::ostream& operator<<(std::ostream&,const default_gbkstring&);
+public:
+	default_gbkstring() :__string() {}
+	default_gbkstring(const char* str) :__string(str) {}
+	default_gbkstring(const std::string& str) :__string(str) {}
+	default_gbkstring(const default_gbkstring& r) :__string(r.__string) {}
+	default_gbkstring(default_gbkstring&& r) :__string(std::move(r.__string)) {}
+	~default_gbkstring(){}
+
+	size_t size() const {
+		size_t res=0;
+		for (size_t i=0;i<__string.size();){
+			size_t byte=__get_byte(static_cast<uint8_t>(__string[i]));
+			i+=byte;
+			++res;
+		}
+		return res;
+	}
+	const char* c_str() const { return __string.c_str(); }
+	void clear() { __string.clear(); }
+	bool empty() const { return __string.empty(); }
+	void pop_back() {
+		size_t src_idx=__get_src_idx(__get_src_idx(size()-1));
+		size_t byte=__get_byte(static_cast<uint8_t>(__string[src_idx]));
+		do {
+			__string.pop_back();
+			--byte;
+		} while (byte>0);
+	}
+public:
+	default_gbkstring& operator=(const default_gbkstring& r){
+		this->__string=r.__string;
+		return *this;
+	}
+	default_gbkstring& operator=(default_gbkstring&& r){
+		this->__string=std::move(r.__string);
+		return *this;
+	}
+	default_gbkstring& operator+=(uint16_t ch){
+		size_t byte=__get_byte(ch);
+		do {
+			uint8_t idx_byte=__get_ith_byte(ch,byte);
+			__string+=idx_byte;
+			--byte;
+		} while (byte>0);
+		return *this;
+	}
+	default_gbkstring& operator+=(const default_gbkstring& r){
+		__string+=r.__string;
+		return *this;
+	}
+	uint16_t operator[](size_t idx) const {
+		size_t src_idx=__get_src_idx(idx);
+		size_t byte=__get_byte(static_cast<uint8_t>(__string[src_idx]));
+		uint16_t res=0;
+		do {
+			res<<=8;
+			res+=static_cast<uint8_t>(__string[src_idx]);
+			++src_idx;
+			--byte;
+		} while (byte>0);
+		return res;
+	}
+	bool operator<(const default_gbkstring& r) const { return __string<r.__string; }
+private:
+	size_t __get_src_idx(size_t idx) const {
+		size_t res=0,n=__string.size();
+		for (size_t i=0;res<n&&i<idx;++i){
+			uint8_t ch=static_cast<uint8_t>(__string[res]);
+			size_t byte=__get_byte(ch);
+			res+=byte;
+		}
+		return res;
+	}
+	size_t __get_byte(uint8_t ch) const {
+		if ((ch&static_cast<uint8_t>(0x80))) return static_cast<size_t>(2);
+		return static_cast<size_t>(1);
+	}
+	size_t __get_byte(uint16_t ch) const {
+		if ((ch&static_cast<uint8_t>(0x80))) return static_cast<size_t>(2);
+		return static_cast<size_t>(1);
+	}
+	uint8_t __get_ith_byte(uint16_t ch,size_t i) const {
+		switch (i){
+		case 1:
+			return static_cast<uint8_t>(ch&(0xFF));
+		case 2:
+			return static_cast<uint8_t>((ch&(0xFF00))>>8);
+		default: break;
+		}
+		// Imposible
+		return static_cast<uint8_t>(0);
+	}
+private:
+	std::string __string;
+};
+struct default_gbkconvertion {
+	default_gbkstring operator()(double num){
+		return default_gbkstring(std::to_string(num));
+	}
+	double operator()(const default_gbkstring& str){
+		return std::stod(str.c_str());
+	}
+};
+__JSON_PARSER_FORCE_INLINE
+std::ostream& operator<<(std::ostream& os,const default_gbkstring& str){
+	os<<str.__string;
+	return os;
+}
+
+
+/*
  *	ParserException
 */
 class ParserException :public std::exception {
@@ -184,6 +422,17 @@ public:
 		: std::exception(msg.c_str()){}
 };
 
+
+/*
+ *	typedef Json
+*/
+using DefaultJson=Json<default_objtype,default_arrtype,default_strtype,default_numtype,default_booleantype,default_convertion>;
+using DefaultJsonParser=JsonParser<default_objtype,default_arrtype,default_strtype,default_numtype,default_booleantype,default_convertion>;
+using UTF8Json=Json<default_objtype,default_arrtype,default_utf8string,default_numtype,default_booleantype,default_utf8convertion>;
+using UTF8JsonParser=JsonParser<default_objtype,default_arrtype,default_utf8string,default_numtype,default_booleantype,default_utf8convertion>;
+using GBKJson=Json<default_objtype,default_arrtype,default_gbkstring,default_numtype,default_booleantype,default_gbkconvertion>;
+using GBKJsonParser=JsonParser<default_objtype,default_arrtype,default_gbkstring,default_numtype,default_booleantype,default_gbkconvertion>;
+
 /*
  * Json
 */
@@ -196,13 +445,13 @@ template <
 	typename convertion=default_convertion
 >
 class Json {
-	using Self=Json<ObjType,ArrType,StrType,NumType,BooleanType>;
+	using Self=Json<ObjType,ArrType,StrType,NumType,BooleanType,convertion>;
 
 	friend class JsonParser<ObjType,ArrType,StrType,NumType,BooleanType,convertion>;
 
-	friend Self operator""__json(const char*,size_t);
-	friend Self operator""__json(unsigned long long);
-	friend Self operator""__json(long double);
+	friend DefaultJson operator""__json(const char*,size_t);
+	friend DefaultJson operator""__json(unsigned long long);
+	friend DefaultJson operator""__json(long double);
 
 	union {
 		ObjType<StrType,Self*> __object;
@@ -238,11 +487,6 @@ public:
 		__construct_from_type(type);
 	}
 	// TODO: Other Construct
-
-	/*
-	 *	Iterator
-	*/
-	// TODO: Iterator
 
 	Type get_type() const noexcept { return __type; }
 
@@ -309,7 +553,7 @@ public:
 	*/
 	template <typename T>
 	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE(T)
-		as()
+		as() const
 	{
 		__check_type(Type::NUMBER);
 		return static_cast<T>(__number);
@@ -1267,7 +1511,7 @@ private:
 		}
 	}
 
-	std::string __type_to_string(const Type& type){
+	std::string __type_to_string(const Type& type) const {
 		switch (type){
 		case Type::OBJECT : return "OBJECT";
 		case Type::ARRAY  : return "ARRAY" ;
@@ -1293,8 +1537,8 @@ template <
 class JsonParser {
 	using JsonClass=Json<ObjType,ArrType,StrType,NumType,BooleanType,convertion>;
 public:
-	static JsonClass parse(const char* json){
-		size_t tmp=0,n=std::strlen(json);
+	static JsonClass parse(const StrType& json){
+		size_t tmp=0,n=json.size();
 		JsonClass res=__parse(json,0,tmp,n);
 		while ((++tmp)<n){
 			if (!__is_blank(json,tmp,n))
@@ -1303,7 +1547,7 @@ public:
 		return res;
 	}
 private:
-	static JsonClass __parse(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		__skip_blank(json,l,n);
 		if (json[l]=='{')
 			return __parse_object(json,l,new_idx,n);
@@ -1317,11 +1561,10 @@ private:
 			return __parse_boolean(json,l,new_idx,n);
 		if (json[l]=='n')
 			return __parse_null(json,l,new_idx,n);
-		std::string err_msg=std::string("Parser Unknown Character: ")+json[l]
-			+std::string(" idx: ")+std::to_string(l);
+		std::string err_msg=std::string("Parser Unknown Character");
 		throw ParserException(err_msg);
 	}
-	static JsonClass __parse_object(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse_object(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::object();
 		new_idx=l;
 		__peek(json,new_idx,n,'{');
@@ -1361,7 +1604,7 @@ private:
 		--new_idx;
 		return res;
 	}
-	static JsonClass __parse_array(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse_array(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::array();
 		new_idx=l;
 		__peek(json,new_idx,n,'[');
@@ -1394,7 +1637,7 @@ private:
 		--new_idx;
 		return res;
 	}
-	static JsonClass __parse_string(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse_string(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::string();
 		new_idx=l;
 		__peek(json,new_idx,n,'"');
@@ -1426,7 +1669,7 @@ private:
 		--new_idx;
 		return res;
 	}
-	static JsonClass __parse_number(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse_number(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::number();
 		StrType tmp; tmp.clear();
 		new_idx=l;
@@ -1466,7 +1709,7 @@ private:
 		--new_idx;
 		return res;
 	}
-	static JsonClass __parse_boolean(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse_boolean(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		JsonClass res=JsonClass::boolean();
 		new_idx=l;
 		if (json[new_idx]=='t'){
@@ -1487,7 +1730,7 @@ private:
 		--new_idx;
 		return res;
 	}
-	static JsonClass __parse_null(const char* json,size_t l,size_t& new_idx,size_t n){
+	static JsonClass __parse_null(const StrType& json,size_t l,size_t& new_idx,size_t n){
 		new_idx=l;
 		__peek(json,new_idx,n,'n');
 		__peek(json,new_idx,n,'u');
@@ -1497,35 +1740,34 @@ private:
 		return JsonClass::null();
 	}
 
-	static inline bool __is_digit(const char* json,size_t idx,size_t n){
+	static inline bool __is_digit(const StrType& json,size_t idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
-		char ch=json[idx];
+		uint32_t ch=json[idx];
 		return ch>='0'&&ch<='9';
 	}
-	static inline bool __is_blank(const char* json,size_t idx,size_t n){
+	static inline bool __is_blank(const StrType& json,size_t idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
-		char ch=json[idx];
+		uint32_t ch=json[idx];
 		return ch==' '||ch=='\n'||ch=='\t'||ch=='\r\n';
 	}
-	static void __skip_blank(const char* json,size_t& idx,size_t n){
+	static void __skip_blank(const StrType& json,size_t& idx,size_t n){
 		while (idx<n&&__is_blank(json,idx,n)){
 			__peek(json,idx,n);
 		}
 	}
-	static void __peek(const char* json,size_t& idx,size_t n,char ch){
+	static void __peek(const StrType& json,size_t& idx,size_t n,uint32_t ch){
 		__check_overstep_boundary(json,idx,n);
 		if (json[idx]!=ch){
-			std::string err_msg=std::string("Parser Unknown Character: '")+json[idx]
-				+std::string("' want: '")+ch+std::string("' idx: ")+std::to_string(idx);
+			std::string err_msg=std::string("Parser Unknown Character")+char(ch);
 			throw ParserException(err_msg);
 		}
 		++idx;
 	}
-	static void __peek(const char* json,size_t& idx,size_t n){
+	static void __peek(const StrType& json,size_t& idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
 		++idx;
 	}
-	static void __check_overstep_boundary(const char* json,size_t idx,size_t n){
+	static void __check_overstep_boundary(const StrType& json,size_t idx,size_t n){
 		if (idx>=n){
 			throw ParserException("Index Overstep the Boundary");
 		}
@@ -1539,9 +1781,9 @@ private:
 		key=key.substr(1,key.size()-2);
 	}
 
-	static void __check_control_character(const char* json,size_t idx,size_t n){
+	static void __check_control_character(const StrType& json,size_t idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
-		char ch=json[idx];
+		uint32_t ch=static_cast<uint32_t>(json[idx]);
 		if (ch=='"')  return;
 		if (ch=='\\') return;
 		if (ch=='/')  return;
@@ -1551,10 +1793,10 @@ private:
 		if (ch=='r')  return;
 		if (ch=='t')  return;
 		if (ch=='u')  return;
-		throw ParserException(std::string("Parser Unknown Control Character: ")+ch);
+		throw ParserException(std::string("Parser Unknown Control Character"));
 	}
 
-	static void __check_digit(const char* json,size_t idx,size_t n){
+	static void __check_digit(const StrType& json,size_t idx,size_t n){
 		if (!__is_digit(json,idx,n)){
 			throw ParserException("Want Digit");
 		}
@@ -1565,18 +1807,18 @@ private:
  *	literal
 */
 __JSON_PARSER_FORCE_INLINE
-Json<> operator""__json(const char* json,size_t){
-	return JsonParser<>::parse(json);
+DefaultJson operator""__json(const char* json,size_t){
+	return DefaultJsonParser::parse(json);
 }
 __JSON_PARSER_FORCE_INLINE
-Json<> operator""__json(unsigned long long num){
-	Json<> res=Json<>::number();
+DefaultJson operator""__json(unsigned long long num){
+	DefaultJson res=DefaultJson::number();
 	res.__number=default_numtype(num);
 	return res;
 }
 __JSON_PARSER_FORCE_INLINE
-Json<> operator""__json(long double num){
-	Json<> res=Json<>::number();
+DefaultJson operator""__json(long double num){
+	DefaultJson res=DefaultJson::number();
 	res.__number=default_numtype(num);
 	return res;
 }
