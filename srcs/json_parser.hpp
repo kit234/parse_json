@@ -201,6 +201,7 @@ public:
 			--byte;
 		} while (byte>0);
 	}
+
 public:
 	default_utf8string& operator=(const default_utf8string& r){
 		this->__string=r.__string;
@@ -236,6 +237,7 @@ public:
 		return res;
 	}
 	bool operator<(const default_utf8string& r) const { return __string<r.__string; }
+	operator std::string() const { return __string; }
 private:
 	size_t __get_src_idx(size_t idx) const {
 		size_t res=0,n=__string.size();
@@ -358,6 +360,7 @@ public:
 		return res;
 	}
 	bool operator<(const default_gbkstring& r) const { return __string<r.__string; }
+	operator std::string() const { return __string; }
 private:
 	size_t __get_src_idx(size_t idx) const {
 		size_t res=0,n=__string.size();
@@ -528,7 +531,7 @@ public:
 		return Self(Type::NONE);
 	}
 
-	StrType dump() const noexcept {
+	StrType dump() const {
 		switch (this->__type){
 		case Type::OBJECT:
 			return __dump_object();
@@ -600,7 +603,7 @@ public:
 	*/
 	Self& at(const StrType& key){
 		__check_type(Type::OBJECT);
-		return *(__object[key]);
+		return *(__object.at(key));
 	}
 	const Self& at(const StrType& key) const {
 		__check_type(Type::OBJECT);
@@ -608,7 +611,7 @@ public:
 	}
 	Self& at(size_t idx){
 		__check_type(Type::ARRAY);
-		return *(__array[idx]);
+		return *(__array.at(idx));
 	}
 	const Self& at(size_t idx) const {
 		return *(__array.at(idx));
@@ -1244,7 +1247,7 @@ public:
 			null_obj->__prev=this;
 			__object.insert(std::make_pair(key,null_obj));
 		}
-		return *(__object[key]);
+		return *(__object.at(key));
 	}
 	const Self& operator[](const StrType& key) const {
 		__check_type(Type::OBJECT);
@@ -1254,7 +1257,7 @@ public:
 	Self& operator[](size_t idx){
 		__construct_type_if_null(Type::ARRAY);
 		__check_type(Type::ARRAY);
-		return *(__array[idx]);
+		return *(__array.at(idx));
 	}
 	const Self& operator[](size_t idx) const {
 		__check_type(Type::ARRAY);
@@ -1742,12 +1745,12 @@ private:
 
 	static inline bool __is_digit(const StrType& json,size_t idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
-		uint32_t ch=json[idx];
+		auto ch=json[idx];
 		return ch>='0'&&ch<='9';
 	}
 	static inline bool __is_blank(const StrType& json,size_t idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
-		uint32_t ch=json[idx];
+		auto ch=json[idx];
 		return ch==' '||ch=='\n'||ch=='\t'||ch=='\r\n';
 	}
 	static void __skip_blank(const StrType& json,size_t& idx,size_t n){
@@ -1783,7 +1786,7 @@ private:
 
 	static void __check_control_character(const StrType& json,size_t idx,size_t n){
 		__check_overstep_boundary(json,idx,n);
-		uint32_t ch=static_cast<uint32_t>(json[idx]);
+		auto ch=json[idx];
 		if (ch=='"')  return;
 		if (ch=='\\') return;
 		if (ch=='/')  return;

@@ -15,3 +15,7 @@ void string2json(){
 	Json<> obj2=R"({"name":"kit","age":18})"__json;
 }
 
+// json class to string
+string json2string(const Json<>& json){
+	return json.dump();
+}
