@@ -563,6 +563,61 @@ public:
 		return Self(Type::NONE);
 	}
 
+	template <typename T>
+	static inline
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self)
+		string(const T& str)
+	{
+		Self res(Type::STRING);
+		res.__string=StrType(str);
+		return res;
+	}
+	template <typename T>
+	static inline
+	__JSON_PARSER_ENABLE_IF_STRING_COMPATIBLE_U(T,Self)
+		string(T&& str)
+	{
+		Self res(Type::STRING);
+		res.__string=StrType(std::move(str));
+		return res;
+	}
+	template <typename T>
+	static inline
+	__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self)
+		number(const T& num)
+	{
+		Self res(Type::NUMBER);
+		res.__number=NumType(num);
+		return res;
+	}
+	template <typename T>
+	static inline
+		__JSON_PARSER_ENABLE_IF_NUMBER_COMPATIBLE_U(T,Self)
+		number(T&& num)
+	{
+		Self res(Type::NUMBER);
+		res.__number=NumType(std::move(num));
+		return res;
+	}
+	template <typename T>
+	static inline
+	__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self)
+		boolean(const T& boo)
+	{
+		Self res(Type::BOOLEAN);
+		res.__boolean=boo;
+		return res;
+	}
+	template <typename T>
+	static inline
+		__JSON_PARSER_ENABLE_IF_BOOLEAN_COMPATIBLE_U(T,Self)
+		boolean(T&& boo)
+	{
+		Self res(Type::BOOLEAN);
+		res.__boolean=BooleanType(std::move(boo));
+		return res;
+	}
+
 	StrType dump() const {
 		switch (this->__type){
 		case Type::OBJECT:
