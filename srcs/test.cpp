@@ -1,5 +1,21 @@
 #include "json_parser.hpp"
+#include <iostream>
+#include <string>
 
-void test(){
-	kit::Json<> a;
+using namespace std;
+using namespace kit;
+
+// string to json class
+void string2json(){
+	// use JsonParser::parse
+	const char* json=R"({"name":"kit","age":18})";
+	Json<> obj1=JsonParser<>::parse(json);
+
+	// use literal
+	Json<> obj2=R"({"name":"kit","age":18})"__json;
+}
+
+// json class to string
+string json2string(const Json<>& json){
+	return json.dump();
 }
