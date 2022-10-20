@@ -51,6 +51,7 @@
 #include <vector>
 #include <string>
 #include <exception>
+
 #include <cstdint>
 
 #if defined __JSON_PARSER_CPP17
@@ -70,6 +71,7 @@ void __destroy_at(T* ptr){
 }
 
 /*
+
  *	__is_string_const_array: if the T is const char*(&)[N]
 */
 template <typename T>
@@ -91,10 +93,12 @@ struct __is_one_of<T,U>
 	:std::is_same<T,U>
 {};
 
+
 /*
  *	__remove_extra: remove the (const,pointer,reference) of type.
 */
 template <typename T>
+
 struct __remove_extra
 	:std::remove_const<std::remove_reference_t<std::remove_pointer_t<T>>>
 {};
@@ -108,6 +112,7 @@ struct __remove_extra<const char(&)[N]>
 {
 	using type=const char(&)[N];
 };
+
 template <typename T>
 using __remove_extra_t=typename __remove_extra<T>::type;
 
@@ -115,9 +120,11 @@ using __remove_extra_t=typename __remove_extra<T>::type;
  *	__is_number_compatible: if the T is the number compatible
 */
 template <typename T>
+
 struct is_number_compatible
 	:__is_one_of<T,__JSON_PARSER_NUMBER_COMPATIBLE>
 {};
+
 template <typename T>
 constexpr bool is_number_compatible_v=is_number_compatible<T>::value;
 
@@ -126,6 +133,7 @@ constexpr bool is_number_compatible_v=is_number_compatible<T>::value;
 */
 #if defined __JSON_PARSER_CPP17
 template <typename T>
+
 struct is_string_compatible
 	:std::bool_constant<__is_one_of<T,__JSON_PARSER_STRING_COMPATIBLE>::value||
 		                __is_string_const_array_v<T>>
@@ -140,6 +148,7 @@ template <>
 struct is_string_compatible<const char*>
 	:std::true_type
 {};
+
 #endif
 template <typename T>
 constexpr bool is_string_compatible_v=is_string_compatible<T>::value;
@@ -148,9 +157,11 @@ constexpr bool is_string_compatible_v=is_string_compatible<T>::value;
  *	is_boolean_compatible: if the T is boolean compatible
 */
 template <typename T>
+
 struct is_boolean_compatible
 	:__is_one_of<T,__JSON_PARSER_BOOLEAN_COMPATIBLE>
 {};
+
 template <typename T>
 constexpr bool is_boolean_compatible_v=is_boolean_compatible<T>::value;
 
@@ -427,12 +438,14 @@ std::ostream& operator<<(std::ostream& os,const default_gbkstring& str){
 
 
 /*
+
  *	ParserException
 */
 class ParserException :public std::exception {
 public:
 	ParserException(const std::string& msg)
 		: std::exception(msg.c_str()){}
+
 };
 /*
  *	JsonClassException
@@ -453,6 +466,7 @@ using UTF8Json=Json<default_objtype,default_arrtype,default_utf8string,default_n
 using UTF8JsonParser=JsonParser<default_objtype,default_arrtype,default_utf8string,default_numtype,default_booleantype,default_utf8convertion>;
 using GBKJson=Json<default_objtype,default_arrtype,default_gbkstring,default_numtype,default_booleantype,default_gbkconvertion>;
 using GBKJsonParser=JsonParser<default_objtype,default_arrtype,default_gbkstring,default_numtype,default_booleantype,default_gbkconvertion>;
+
 
 /*
  * Json
@@ -1756,14 +1770,6 @@ private:
 		if (idx>=n){
 			throw ParserException("Index Overstep the Boundary");
 		}
-	}
-
-	static void __check_and_fix_key(StrType& key){
-		if (key[0]!='"'||key.back()!='"'){
-			std::string err_msg=std::string("Parser Error Key: ")+std::string(key);
-			throw ParserException(err_msg);
-		}
-		key=key.substr(1,key.size()-2);
 	}
 
 	static void __check_control_character(const StrType& json,size_t idx,size_t n){
