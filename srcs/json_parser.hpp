@@ -629,24 +629,8 @@ public:
 		return res;
 	}
 
-	StrType dump() const {
-		switch (this->__type){
-		case Type::OBJECT:
-			return __dump_object();
-		case Type::ARRAY:
-			return __dump_array();
-		case Type::STRING:
-			return __dump_string();
-		case Type::NUMBER:
-			return __dump_number();
-		case Type::BOOLEAN:
-			return __dump_boolean();
-		case Type::NONE:
-			return __dump_null();
-		default: break;
-		}
-		// Imposible
-		return StrType();
+	StrType dump(size_t indent=0) const {
+		return __dump(indent,1);
 	}
 public:
 	/*
@@ -1495,45 +1479,71 @@ private:
 		this->__boolean=std::move(r->__boolean);
 	}
 
-	StrType __dump_object() const {
+	StrType __dump(size_t indent,size_t wrap_count) const {
+		switch (this->__type){
+		case Type::OBJECT:
+			return __dump_object(indent,wrap_count);
+		case Type::ARRAY:
+			return __dump_array(indent,wrap_count);
+		case Type::STRING:
+			return __dump_string(indent,wrap_count);
+		case Type::NUMBER:
+			return __dump_number(indent,wrap_count);
+		case Type::BOOLEAN:
+			return __dump_boolean(indent,wrap_count);
+		case Type::NONE:
+			return __dump_null(indent,wrap_count);
+		default: break;
+		}
+		// Imposible
+		return StrType();
+	}
+	void __indent_wrap(StrType& str,size_t indent,size_t wrap_count) const {
+		if (indent==0) return;
+		str+='\n';
+		for (size_t i=0;i<wrap_count*indent;++i) str+=" ";
+	}
+	StrType __dump_object(size_t indent,size_t wrap_count) const {
 		StrType res;
 		res+='{';
-		for (auto& p:__object){
-			res+='"'; res+=p.first; res+='"';
-			res+=':';
-			res+=(p.second)->dump();
-			res+=',';
+		for (auto p=__object.begin();p!=__object.end();++p){
+			if (p!=__object.begin()) res+=',';
+			__indent_wrap(res,indent,wrap_count);
+			res+='"'; res+=p->first; res+='"';
+			res+=": ";
+			res+=(p->second)->__dump(indent,wrap_count+1);
 		}
-		res.pop_back(); // remove tail ','
+		__indent_wrap(res,indent,wrap_count-1);
 		res+='}';
 		return res;
 	}
-	StrType __dump_array() const {
+	StrType __dump_array(size_t indent,size_t wrap_count) const {
 		StrType res;
 		res+='[';
-		for (auto& p:__array){
-			res+=(p->dump());
-			res+=',';
+		for (auto p=__array.begin();p!=__array.end();++p){
+			if (p!=__array.begin()) res+=',';
+			__indent_wrap(res,indent,wrap_count);
+			res+=((*p)->__dump(indent,wrap_count+1));
 		}
-		res.pop_back(); // remove tail ','
+		__indent_wrap(res,indent,wrap_count-1);
 		res+=']';
 		return res;
 	}
-	StrType __dump_string() const {
+	StrType __dump_string(size_t,size_t) const {
 		StrType res;
 		res+='"'; res+=__string; res+='"';
 		return res;
 	}
-	StrType __dump_number() const {
+	StrType __dump_number(size_t,size_t) const {
 		return convertion()(__number);
 	}
-	StrType __dump_boolean() const {
+	StrType __dump_boolean(size_t,size_t) const {
 		if (__boolean)
 			return StrType("true");
 		else
 			return StrType("false");
 	}
-	StrType __dump_null() const {
+	StrType __dump_null(size_t,size_t) const {
 		return StrType("null");
 	}
 
