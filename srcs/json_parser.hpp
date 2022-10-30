@@ -550,6 +550,11 @@ public:
 	const NumType&                raw_number () const noexcept { return __number ; }
 	const BooleanType&            raw_boolean() const noexcept { return __boolean; }
 
+	bool contain(const StrType& key) const {
+		__check_type(Type::OBJECT);
+		return __object.count(key)>0;
+	}
+
 	static inline Self object() {
 		return Self(Type::OBJECT);
 	}
