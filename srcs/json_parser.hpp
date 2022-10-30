@@ -544,6 +544,12 @@ public:
 	bool is_number () const noexcept { return __type==Type::NUMBER ; }
 	bool is_boolean() const noexcept { return __type==Type::BOOLEAN; }
 
+	const ObjType<StrType,Self*>& raw_object () const noexcept { return __object ; }
+	const ArrType<Self*>&         raw_array  () const noexcept { return __array  ; }
+	const StrType&                raw_string () const noexcept { return __string ; }
+	const NumType&                raw_number () const noexcept { return __number ; }
+	const BooleanType&            raw_boolean() const noexcept { return __boolean; }
+
 	static inline Self object() {
 		return Self(Type::OBJECT);
 	}
